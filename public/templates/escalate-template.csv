@@ -1,0 +1,2 @@
+Projeto,Sistema,Summary,Description,priority,labels,customfield_13102,customfield_10610,customfield_10623,customfield_10624,customfield_10671,customfield_10800,customfield_10684,customfield_11700
+ASSETN,Servidor XPTO,"Falha detectada via scanner","Descreva o contexto completo da vulnerabilidade.",High,"internet-facing;windows","Aplicar mitigação temporária","Firewall corporativo","Vulnerabilities","Mobile","Crítico","CWE-79","8.9","Aplicacao_Web;Ativo_Crítico"
