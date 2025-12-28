@@ -1,0 +1,3 @@
+{
+  "/(authenticated)/changelog/page": "app/(authenticated)/changelog/page.js"
+}
