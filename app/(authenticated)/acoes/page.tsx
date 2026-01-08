@@ -69,6 +69,8 @@ const projectOptions = [
 ];
 
 const statusOptions = ["DONE", "Cancelado"];
+const assigneeProjectKey = "ASSETN";
+const assigneeJqlPrefix = `project = ${assigneeProjectKey} AND `;
 
 const actionLabelMap = actionOptions.reduce<Record<string, string>>(
   (acc, action) => {
@@ -163,12 +165,37 @@ export default function AcoesPage() {
     };
   }, [requestsRefreshKey]);
 
+  function normalizeAssigneeJql(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return assigneeJqlPrefix;
+    }
+    if (/^project\s*=\s*assetn\b/i.test(trimmed)) {
+      if (/^project\s*=\s*assetn\s*and\s*$/i.test(trimmed)) {
+        return assigneeJqlPrefix;
+      }
+      return trimmed;
+    }
+    return `${assigneeJqlPrefix}${trimmed}`;
+  }
+
+  function parseIssueIds(value: string) {
+    return value
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
   function handleFilterModeChange(mode: "jql" | "ids") {
     if (selectedAction === "delete" && mode === "jql") {
       return;
     }
     setFilterMode(mode);
-    setFilterValue("");
+    if (selectedAction === "assignee" && mode === "jql") {
+      setFilterValue(assigneeJqlPrefix);
+    } else {
+      setFilterValue("");
+    }
     setIssuesCount(null);
     if (mode !== "ids") {
       setIdsFileName(null);
@@ -191,6 +218,30 @@ export default function AcoesPage() {
     if (selectedAction === "assignee" && !assignee.trim()) {
       setError("Informe o novo responsável.");
       return;
+    }
+
+    if (selectedAction === "assignee") {
+      if (filterMode === "jql") {
+        const normalized = normalizeAssigneeJql(filterValue);
+        if (!/^project\s*=\s*assetn\b/i.test(normalized)) {
+          setError("A JQL deve iniciar com project = ASSETN.");
+          return;
+        }
+        if (normalized !== filterValue) {
+          setFilterValue(normalized);
+        }
+      } else {
+        const ids = parseIssueIds(filterValue);
+        if (!ids.length) {
+          setError("Informe os IDs antes de enviar.");
+          return;
+        }
+        const invalid = ids.filter((id) => !/^ASSETN-/i.test(id));
+        if (invalid.length) {
+          setError("Apenas IDs iniciados com ASSETN- são permitidos.");
+          return;
+        }
+      }
     }
 
     if (selectedAction === "comment" && !comment.trim()) {
@@ -322,6 +373,9 @@ export default function AcoesPage() {
     if (selectedAction === "delete") {
       setFilterMode("ids");
     }
+    if (selectedAction === "assignee" && filterMode === "jql") {
+      setFilterValue((current) => normalizeAssigneeJql(current));
+    }
   }, [selectedAction]);
 
   function getStatusInfo(status: UserActionRequest["status"]) {
@@ -434,16 +488,6 @@ export default function AcoesPage() {
                 </p>
               </div>
             </div>
-            <div
-              className={cn(
-                "rounded-2xl border px-4 py-3 text-xs",
-                isDark
-                  ? "border-purple-500/30 bg-purple-500/5 text-purple-200"
-                  : "border-purple-200 bg-purple-50 text-purple-700"
-              )}
-            >
-              Ambiente de teste · Jira Cloud
-            </div>
           </div>
         </div>
 
@@ -520,7 +564,11 @@ export default function AcoesPage() {
           message={message}
           onFilterModeChange={handleFilterModeChange}
           onFilterValueChange={(value) => {
-            setFilterValue(value);
+            if (selectedAction === "assignee" && filterMode === "jql") {
+              setFilterValue(normalizeAssigneeJql(value));
+            } else {
+              setFilterValue(value);
+            }
             setIssuesCount(null);
           }}
           onProjectChange={(value) => setProjectKey(value)}
@@ -558,6 +606,7 @@ export default function AcoesPage() {
           uploadedFileName={idsFileName}
           projectOptions={projectOptions}
           csvTemplateUrl="/templates/escalate-template.csv"
+          idsTemplateUrl="/templates/action-ids-template.csv"
         />
 
         <Card className={cardClasses}>

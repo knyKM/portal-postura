@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Loader2, Shield, UserPlus, Users, UserRound } from "lucide-react";
 import { useTheme } from "@/components/theme/theme-provider";
+import { createPortal } from "react-dom";
 
 const roleOptions = [
   { value: "admin", label: "Administrador" },
@@ -32,6 +33,7 @@ type CreatedUser = {
   name: string;
   email: string;
   role: string;
+  security_level: string;
   created_at?: string;
   is_active: boolean;
 };
@@ -41,8 +43,16 @@ type ApiUserResponse = {
   name: string;
   email: string;
   role: string;
+  security_level?: string;
   created_at?: string;
   is_active?: boolean;
+};
+
+type SecurityLevel = {
+  key: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
 };
 
 function generatePassword() {
@@ -64,6 +74,7 @@ export default function UsuariosPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("analista");
+  const [securityLevel, setSecurityLevel] = useState("padrao");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdUser, setCreatedUser] = useState<CreatedUser | null>(null);
@@ -78,6 +89,17 @@ export default function UsuariosPage() {
   const [usersActionError, setUsersActionError] = useState<string | null>(null);
   const [usersActionMessage, setUsersActionMessage] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
+  const [securityEdits, setSecurityEdits] = useState<Record<number, string>>({});
+  const [updatingSecurityId, setUpdatingSecurityId] = useState<number | null>(null);
+  const [securityLevels, setSecurityLevels] = useState<SecurityLevel[]>([]);
+  const [levelsLoading, setLevelsLoading] = useState(false);
+  const [levelsError, setLevelsError] = useState<string | null>(null);
+  const [newLevelName, setNewLevelName] = useState("");
+  const [newLevelDescription, setNewLevelDescription] = useState("");
+  const [creatingLevel, setCreatingLevel] = useState(false);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+  const portalTarget = typeof window !== "undefined" ? document.body : null;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -125,9 +147,16 @@ export default function UsuariosPage() {
             name: user.name,
             email: user.email,
             role: user.role,
+            security_level: user.security_level ?? "padrao",
             created_at: user.created_at,
             is_active: Boolean(user.is_active),
           }))
+        );
+        setSecurityEdits(
+          fetchedUsers.reduce<Record<number, string>>((acc, user) => {
+            acc[user.id] = user.security_level ?? "padrao";
+            return acc;
+          }, {})
         );
       })
       .catch((err) => {
@@ -138,6 +167,32 @@ export default function UsuariosPage() {
         );
       })
       .finally(() => setLoadingUsers(false));
+  }, [loadingRole, accessDenied, currentRole]);
+
+  useEffect(() => {
+    if (loadingRole || accessDenied || currentRole !== "admin") return;
+    setLevelsLoading(true);
+    setLevelsError(null);
+    fetch("/api/security-levels")
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (data?.error) {
+          throw new Error(data.error);
+        }
+        const levels = Array.isArray(data?.levels) ? (data.levels as SecurityLevel[]) : [];
+        setSecurityLevels(levels);
+        if (levels.length > 0) {
+          setSecurityLevel(levels[0].key);
+        }
+      })
+      .catch((err) => {
+        setLevelsError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar níveis."
+        );
+      })
+      .finally(() => setLevelsLoading(false));
   }, [loadingRole, accessDenied, currentRole]);
 
   function handleGeneratePassword() {
@@ -156,7 +211,7 @@ export default function UsuariosPage() {
       const response = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name, email, password, role, securityLevel }),
       });
 
       const data = await response.json().catch(() => null);
@@ -179,6 +234,7 @@ export default function UsuariosPage() {
         name: data.user.name,
         email: data.user.email,
         role: data.user.role,
+        security_level: data.user.security_level ?? securityLevel,
         is_active: Boolean(data.user.is_active),
         created_at: creationTimestamp,
       };
@@ -191,6 +247,7 @@ export default function UsuariosPage() {
       setEmail("");
       setPassword("");
       setRole("analista");
+      setSecurityLevel("padrao");
       setUsers((prev) => [normalizedUser, ...prev]);
     } catch (err) {
       setCreatedUser(null);
@@ -200,6 +257,40 @@ export default function UsuariosPage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleCreateSecurityLevel(event: FormEvent) {
+    event.preventDefault();
+    if (creatingLevel) return;
+    setLevelsError(null);
+    setCreatingLevel(true);
+    try {
+      const response = await fetch("/api/security-levels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newLevelName,
+          description: newLevelDescription,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao criar nível.");
+      }
+      const created = data?.level as SecurityLevel | undefined;
+      if (created) {
+        setSecurityLevels((prev) => [...prev, created]);
+        setSecurityLevel(created.key);
+        setNewLevelName("");
+        setNewLevelDescription("");
+      }
+    } catch (err) {
+      setLevelsError(
+        err instanceof Error ? err.message : "Não foi possível criar nível."
+      );
+    } finally {
+      setCreatingLevel(false);
     }
   }
 
@@ -249,6 +340,45 @@ export default function UsuariosPage() {
       );
     } finally {
       setUpdatingUserId(null);
+    }
+  }
+
+  async function handleUpdateUserSecurityLevel(userId: number) {
+    const nextLevel = securityEdits[userId];
+    if (!nextLevel) return;
+    setUsersActionError(null);
+    setUsersActionMessage(null);
+    setUpdatingSecurityId(userId);
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ securityLevel: nextLevel }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível atualizar o nível.");
+      }
+      const updatedLevel =
+        typeof data?.user?.security_level === "string"
+          ? data.user.security_level
+          : nextLevel;
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId
+            ? { ...user, security_level: updatedLevel }
+            : user
+        )
+      );
+      setUsersActionMessage("Nível de segurança atualizado com sucesso.");
+    } catch (err) {
+      setUsersActionError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível atualizar o nível."
+      );
+    } finally {
+      setUpdatingSecurityId(null);
     }
   }
 
@@ -418,6 +548,23 @@ export default function UsuariosPage() {
                   </p>
                 </div>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-xl border-zinc-700 text-xs text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => setIsSecurityModalOpen(true)}
+                >
+                  Níveis de segurança
+                </Button>
+                <Button
+                  type="button"
+                  className="rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-xs font-semibold text-white"
+                  onClick={() => setIsUserModalOpen(true)}
+                >
+                  Novo usuário
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-zinc-300">
               {usersError && (
@@ -465,6 +612,9 @@ export default function UsuariosPage() {
                           Perfil
                         </th>
                         <th className="px-4 py-3 font-semibold uppercase tracking-[0.2em]">
+                          Nível de segurança
+                        </th>
+                        <th className="px-4 py-3 font-semibold uppercase tracking-[0.2em]">
                           Status
                         </th>
                         <th className="px-4 py-3 font-semibold uppercase tracking-[0.2em]">
@@ -507,6 +657,59 @@ export default function UsuariosPage() {
                             )}
                           >
                             {userItem.role}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-400">
+                            {accessDenied ? (
+                              securityLevels.find(
+                                (level) => level.key === userItem.security_level
+                              )?.name ?? userItem.security_level
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={securityEdits[userItem.id] ?? userItem.security_level}
+                                  onChange={(event) =>
+                                    setSecurityEdits((prev) => ({
+                                      ...prev,
+                                      [userItem.id]: event.target.value,
+                                    }))
+                                  }
+                                  className={cn(
+                                    "rounded-lg border bg-transparent px-2 py-1 text-[11px] focus-visible:outline-none",
+                                    isDark
+                                      ? "border-zinc-700 text-zinc-100"
+                                      : "border-slate-200 text-slate-700"
+                                  )}
+                                >
+                                  {securityLevels.map((level) => (
+                                    <option
+                                      key={level.key}
+                                      value={level.key}
+                                      className={cn(
+                                        isDark
+                                          ? "bg-[#050816] text-white"
+                                          : "bg-white text-slate-700"
+                                      )}
+                                    >
+                                      {level.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg border-zinc-700 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                                  disabled={updatingSecurityId === userItem.id}
+                                  onClick={() => handleUpdateUserSecurityLevel(userItem.id)}
+                                >
+                                  {updatingSecurityId === userItem.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    "Salvar"
+                                  )}
+                                </Button>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span
@@ -564,149 +767,6 @@ export default function UsuariosPage() {
           </Card>
         )}
 
-        <Card
-          className={cn(
-            "rounded-3xl border",
-            isDark ? "border-zinc-800 bg-[#050816]/80" : "border-slate-200 bg-white"
-          )}
-        >
-          <CardHeader className="flex flex-row items-start justify-between">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg">
-                <UserPlus className="h-5 w-5" />
-              </span>
-              <div>
-                <CardTitle className="text-lg">Novo usuário</CardTitle>
-                <p className="text-sm text-zinc-500">
-                  Defina o perfil e gere senhas fortes automaticamente.
-                </p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {accessDenied && !loadingRole && (
-              <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                Seu perfil atual ({currentRole ?? "desconhecido"}) não possui permissão para criar usuários. Solicite a um administrador.
-              </div>
-            )}
-            <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-zinc-400">
-                  Nome completo
-                </label>
-                <Input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Digite o nome do colaborador"
-                  disabled={accessDenied}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-zinc-400">
-                  E-mail corporativo
-                </label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="usuario@postura.com"
-                  disabled={accessDenied}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-zinc-400">
-                  Senha
-                </label>
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    value={password}
-                    onChange={(event) => {
-                      setPassword(event.target.value);
-                      setGeneratedPassword(null);
-                    }}
-                    placeholder="Clique em gerar ou informe manualmente"
-                    disabled={accessDenied}
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={handleGeneratePassword}
-                    className="shrink-0 rounded-xl bg-zinc-800 text-xs text-white hover:bg-zinc-700"
-                    disabled={accessDenied}
-                  >
-                    Gerar
-                  </Button>
-                </div>
-                <p className="text-[11px] text-zinc-500">
-                  Mínimo de 8 caracteres. Senhas geradas têm 16 caracteres.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-zinc-400">
-                  Perfil do usuário
-                </label>
-                <div
-                  className={cn(
-                    "rounded-2xl border",
-                    isDark
-                      ? "border-zinc-700 bg-[#050816]"
-                      : "border-slate-200 bg-white",
-                    accessDenied && "opacity-60"
-                  )}
-                >
-                  <select
-                    value={role}
-                    onChange={(event) => setRole(event.target.value)}
-                    disabled={accessDenied}
-                    className={cn(
-                      "w-full rounded-2xl bg-transparent px-3 py-2 text-sm focus-visible:outline-none disabled:cursor-not-allowed",
-                      isDark ? "text-zinc-100" : "text-slate-700"
-                    )}
-                  >
-                    {roleOptions.map((option) => (
-                      <option
-                        key={option.value}
-                        value={option.value}
-                        className={cn(
-                          isDark ? "bg-[#050816] text-white" : "bg-white text-slate-700"
-                        )}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <p className="text-[11px] text-zinc-500">
-                  Usaremos esse perfil para permissões futuras.
-                </p>
-              </div>
-              <div className="md:col-span-2">
-                {error && (
-                  <div className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-                    {error}
-                  </div>
-                )}
-              </div>
-              <div className="md:col-span-2">
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || accessDenied || loadingRole}
-                  className={cn(
-                    "w-full rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-sm font-semibold text-white shadow-lg",
-                    isSubmitting && "opacity-70"
-                  )}
-                >
-                  {isSubmitting ? "Registrando..." : "Cadastrar usuário"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
         {createdUser && (
           <Card className="rounded-3xl border border-emerald-700/60 bg-emerald-500/10">
             <CardHeader className="flex flex-row items-center gap-3">
@@ -740,6 +800,15 @@ export default function UsuariosPage() {
                   Perfil
                 </p>
                 <p className="font-semibold capitalize">{createdUser.role}</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/40 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80">
+                  Nível de segurança
+                </p>
+                <p className="font-semibold">
+                  {securityLevels.find((level) => level.key === createdUser.security_level)
+                    ?.name ?? createdUser.security_level}
+                </p>
               </div>
               <div className="rounded-2xl border border-emerald-500/40 px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80">
@@ -811,6 +880,308 @@ export default function UsuariosPage() {
             ))}
           </CardContent>
         </Card>
+
+        {portalTarget && isUserModalOpen &&
+          createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div
+                className={cn(
+                  "w-full max-w-3xl rounded-3xl border p-6",
+                  isDark ? "border-zinc-800 bg-[#050816]" : "border-slate-200 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg">
+                      <UserPlus className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-purple-300">
+                        Novo usuário
+                      </p>
+                      <h3 className="text-xl font-semibold">
+                        Defina o perfil e o nível de segurança
+                      </h3>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setIsUserModalOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+                <div className="mt-4">
+                  {accessDenied && !loadingRole && (
+                    <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                      Seu perfil atual ({currentRole ?? "desconhecido"}) não possui permissão para criar usuários. Solicite a um administrador.
+                    </div>
+                  )}
+                  <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-zinc-400">
+                        Nome completo
+                      </label>
+                      <Input
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        placeholder="Digite o nome do colaborador"
+                        disabled={accessDenied}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-zinc-400">
+                        E-mail corporativo
+                      </label>
+                      <Input
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="usuario@postura.com"
+                        disabled={accessDenied}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-zinc-400">
+                        Senha
+                      </label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="text"
+                          value={password}
+                          onChange={(event) => {
+                            setPassword(event.target.value);
+                            setGeneratedPassword(null);
+                          }}
+                          placeholder="Clique em gerar ou informe manualmente"
+                          disabled={accessDenied}
+                          required
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={handleGeneratePassword}
+                          className="shrink-0 rounded-xl bg-zinc-800 text-xs text-white hover:bg-zinc-700"
+                          disabled={accessDenied}
+                        >
+                          Gerar
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Mínimo de 8 caracteres. Senhas geradas têm 16 caracteres.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-zinc-400">
+                        Perfil do usuário
+                      </label>
+                      <div
+                        className={cn(
+                          "rounded-2xl border",
+                          isDark
+                            ? "border-zinc-700 bg-[#050816]"
+                            : "border-slate-200 bg-white",
+                          accessDenied && "opacity-60"
+                        )}
+                      >
+                        <select
+                          value={role}
+                          onChange={(event) => setRole(event.target.value)}
+                          disabled={accessDenied}
+                          className={cn(
+                            "w-full rounded-2xl bg-transparent px-3 py-2 text-sm focus-visible:outline-none disabled:cursor-not-allowed",
+                            isDark ? "text-zinc-100" : "text-slate-700"
+                          )}
+                        >
+                          {roleOptions.map((option) => (
+                            <option
+                              key={option.value}
+                              value={option.value}
+                              className={cn(
+                                isDark ? "bg-[#050816] text-white" : "bg-white text-slate-700"
+                              )}
+                            >
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Usaremos esse perfil para permissões futuras.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-zinc-400">
+                        Nível de segurança
+                      </label>
+                      <div
+                        className={cn(
+                          "rounded-2xl border",
+                          isDark
+                            ? "border-zinc-700 bg-[#050816]"
+                            : "border-slate-200 bg-white",
+                          accessDenied && "opacity-60"
+                        )}
+                      >
+                        <select
+                          value={securityLevel}
+                          onChange={(event) => setSecurityLevel(event.target.value)}
+                          disabled={accessDenied || levelsLoading}
+                          className={cn(
+                            "w-full rounded-2xl bg-transparent px-3 py-2 text-sm focus-visible:outline-none disabled:cursor-not-allowed",
+                            isDark ? "text-zinc-100" : "text-slate-700"
+                          )}
+                        >
+                          {securityLevels.map((level) => (
+                            <option
+                              key={level.key}
+                              value={level.key}
+                              className={cn(
+                                isDark ? "bg-[#050816] text-white" : "bg-white text-slate-700"
+                              )}
+                            >
+                              {level.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Esses níveis serão usados para controlar acesso a módulos.
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      {error && (
+                        <div className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                          {error}
+                        </div>
+                      )}
+                    </div>
+                    <div className="md:col-span-2">
+                      <Button
+                        type="submit"
+                        disabled={isSubmitting || accessDenied || loadingRole}
+                        className={cn(
+                          "w-full rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-sm font-semibold text-white shadow-lg",
+                          isSubmitting && "opacity-70"
+                        )}
+                      >
+                        {isSubmitting ? "Registrando..." : "Cadastrar usuário"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>,
+            portalTarget
+          )}
+
+        {portalTarget && isSecurityModalOpen &&
+          createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div
+                className={cn(
+                  "w-full max-w-4xl rounded-3xl border p-6",
+                  isDark ? "border-zinc-800 bg-[#050816]" : "border-slate-200 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-lg">
+                      <Shield className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-sky-300">
+                        Níveis de segurança
+                      </p>
+                      <h3 className="text-xl font-semibold">
+                        Organize acessos por módulos
+                      </h3>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setIsSecurityModalOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {levelsError && (
+                    <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-100">
+                      {levelsError}
+                    </div>
+                  )}
+                  <form
+                    onSubmit={handleCreateSecurityLevel}
+                    className="grid gap-3 md:grid-cols-3"
+                  >
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-zinc-400">
+                        Nome do nível
+                      </label>
+                      <Input
+                        value={newLevelName}
+                        onChange={(event) => setNewLevelName(event.target.value)}
+                        placeholder="Ex: Operacional"
+                        disabled={creatingLevel}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-xs font-semibold text-zinc-400">
+                        Descrição
+                      </label>
+                      <Input
+                        value={newLevelDescription}
+                        onChange={(event) => setNewLevelDescription(event.target.value)}
+                        placeholder="Visibilidade e permissões planejadas"
+                        disabled={creatingLevel}
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <Button
+                        type="submit"
+                        disabled={creatingLevel}
+                        className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 text-sm font-semibold text-white"
+                      >
+                        {creatingLevel ? "Salvando..." : "Criar nível de segurança"}
+                      </Button>
+                    </div>
+                  </form>
+                  <div
+                    className={cn(
+                      "grid gap-3 md:grid-cols-3",
+                      levelsLoading && "opacity-70"
+                    )}
+                  >
+                    {securityLevels.map((level) => (
+                      <div
+                        key={level.key}
+                        className={cn(
+                          "rounded-2xl border px-4 py-3",
+                          isDark
+                            ? "border-zinc-800 bg-[#040513]"
+                            : "border-slate-200 bg-slate-50"
+                        )}
+                      >
+                        <p className="text-xs uppercase tracking-[0.3em] text-sky-400">
+                          {level.name}
+                        </p>
+                        <p className="mt-1 text-sm text-zinc-400">
+                          {level.description ?? "Sem descrição cadastrada."}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>,
+            portalTarget
+          )}
       </div>
     </DashboardShell>
   );

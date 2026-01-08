@@ -5,6 +5,7 @@ import {
   findUserByEmail,
   listUsers,
 } from "@/lib/auth/user-service";
+import { getSecurityLevelByKey } from "@/lib/security/security-level-service";
 
 const ALLOWED_ROLES = ["admin", "analista", "leitor"] as const;
 
@@ -13,6 +14,7 @@ type CreateUserRequest = {
   email?: string;
   password?: string;
   role?: string;
+  securityLevel?: string;
 };
 
 export async function GET(request: Request) {
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
     name: user.name,
     email: user.email,
     role: user.role,
+    security_level: user.security_level,
     created_at: user.created_at,
     is_active: Boolean(user.is_active),
   }));
@@ -66,6 +69,7 @@ export async function POST(request: Request) {
   const email = payload?.email?.trim().toLowerCase();
   const password = payload?.password ?? "";
   const role = payload?.role ?? "analista";
+  const securityLevel = payload?.securityLevel ?? "padrao";
 
   if (!name || name.length < 3) {
     return NextResponse.json(
@@ -95,6 +99,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const level = getSecurityLevelByKey(securityLevel);
+  if (!level) {
+    return NextResponse.json(
+      { error: "Nível de segurança inválido." },
+      { status: 400 }
+    );
+  }
+
   const existing = findUserByEmail(email);
   if (existing) {
     return NextResponse.json(
@@ -109,6 +121,7 @@ export async function POST(request: Request) {
       email,
       password,
       role,
+      securityLevel,
     });
 
     return NextResponse.json(
@@ -118,6 +131,7 @@ export async function POST(request: Request) {
           name: user.name,
           email: user.email,
           role: user.role,
+          security_level: user.security_level,
           is_active: Boolean(user.is_active),
           created_at: user.created_at,
         },

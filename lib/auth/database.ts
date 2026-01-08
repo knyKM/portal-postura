@@ -21,6 +21,7 @@ db.exec(`
     name TEXT NOT NULL,
     avatar TEXT,
     role TEXT DEFAULT 'analista',
+    security_level TEXT DEFAULT 'padrao',
     is_active INTEGER DEFAULT 1,
     mfa_secret TEXT,
     mfa_enabled INTEGER DEFAULT 0,
@@ -38,6 +39,9 @@ const tableInfo = db
   .all() as TableInfoRow[];
 
 const hasRoleColumn = tableInfo.some((column) => column.name === "role");
+const hasSecurityLevelColumn = tableInfo.some(
+  (column) => column.name === "security_level"
+);
 const hasIsActiveColumn = tableInfo.some(
   (column) => column.name === "is_active"
 );
@@ -53,6 +57,13 @@ const hasLastSeenColumn = tableInfo.some(
 
 if (!hasRoleColumn) {
   db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'analista'");
+}
+
+if (!hasSecurityLevelColumn) {
+  db.exec("ALTER TABLE users ADD COLUMN security_level TEXT DEFAULT 'padrao'");
+  db.exec(
+    "UPDATE users SET security_level = 'padrao' WHERE security_level IS NULL OR security_level = ''"
+  );
 }
 
 if (!hasIsActiveColumn) {
@@ -117,6 +128,71 @@ db.exec(`
     value TEXT
   );
 `);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS security_levels (
+    key TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS network_sensors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hostname TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    environment TEXT,
+    owner_tool TEXT,
+    status TEXT DEFAULT 'unknown',
+    last_detail TEXT,
+    last_checked_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+const sensorTableInfo = db
+  .prepare("PRAGMA table_info(network_sensors)")
+  .all() as TableInfoRow[];
+
+const hasSensorStatusColumn = sensorTableInfo.some(
+  (column) => column.name === "status"
+);
+const hasSensorDetailColumn = sensorTableInfo.some(
+  (column) => column.name === "last_detail"
+);
+const hasSensorCheckedColumn = sensorTableInfo.some(
+  (column) => column.name === "last_checked_at"
+);
+
+if (!hasSensorStatusColumn) {
+  db.exec("ALTER TABLE network_sensors ADD COLUMN status TEXT DEFAULT 'unknown'");
+}
+if (!hasSensorDetailColumn) {
+  db.exec("ALTER TABLE network_sensors ADD COLUMN last_detail TEXT");
+}
+if (!hasSensorCheckedColumn) {
+  db.exec("ALTER TABLE network_sensors ADD COLUMN last_checked_at TEXT");
+}
+
+type SecurityLevelRow = {
+  total: number;
+};
+
+const securityLevelCount = db
+  .prepare<SecurityLevelRow>("SELECT COUNT(*) as total FROM security_levels")
+  .get();
+
+if ((securityLevelCount?.total ?? 0) === 0) {
+  const insertLevel = db.prepare(
+    "INSERT INTO security_levels (key, name, description) VALUES (?, ?, ?)"
+  );
+  insertLevel.run("padrao", "Padrão", "Acesso base aos módulos operacionais.");
+  insertLevel.run("restrito", "Restrito", "Somente leitura e visibilidade limitada.");
+  insertLevel.run("critico", "Crítico", "Acesso completo a módulos sensíveis.");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS automation_jobs (
@@ -200,6 +276,56 @@ db.exec(`
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS topologies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    nodes TEXT NOT NULL,
+    links TEXT NOT NULL,
+    custom_types TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+const topologyTableInfo = db
+  .prepare("PRAGMA table_info(topologies)")
+  .all() as TableInfoRow[];
+
+const hasCustomTypesColumn = topologyTableInfo.some(
+  (column) => column.name === "custom_types"
+);
+
+if (!hasCustomTypesColumn) {
+  db.exec("ALTER TABLE topologies ADD COLUMN custom_types TEXT NOT NULL DEFAULT '[]'");
+  db.exec("UPDATE topologies SET custom_types = '[]' WHERE custom_types IS NULL OR custom_types = ''");
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS dashboard_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+const dashboardTableInfo = db
+  .prepare("PRAGMA table_info(dashboard_templates)")
+  .all() as TableInfoRow[];
+
+const hasDashboardConfigColumn = dashboardTableInfo.some(
+  (column) => column.name === "config"
+);
+
+if (!hasDashboardConfigColumn) {
+  db.exec("ALTER TABLE dashboard_templates ADD COLUMN config TEXT NOT NULL DEFAULT '{}'");
+  db.exec(
+    "UPDATE dashboard_templates SET config = '{}' WHERE config IS NULL OR config = ''"
+  );
+}
 
 const playbookTableInfo = db
   .prepare("PRAGMA table_info(playbooks)")

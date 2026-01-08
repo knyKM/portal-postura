@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/components/theme/theme-provider";
 import { Layers, Workflow, Zap } from "lucide-react";
 import { ScriptPickerModal } from "@/components/playbooks/script-picker-modal";
 
@@ -55,6 +56,8 @@ const statusConfig: Record<
 };
 
 export default function PlaybooksPage() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -196,31 +199,60 @@ export default function PlaybooksPage() {
   return (
     <DashboardShell
       pageTitle="Centro de Playbooks Automatizados"
-      pageSubtitle="Orquestre fluxos, conecte automações Jira e scripts React + Vite para acelerar mitigação."
+      pageSubtitle="Orquestre fluxos, conecte automações Jira e scripts para acelerar mitigação."
     >
       <div className="flex w-full flex-col gap-6 px-4 pb-10 lg:px-10">
-        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#090f21] via-[#050514] to-[#04000c] p-6 text-zinc-100 shadow-[0_20px_100px_rgba(88,28,135,0.35)]">
+        <section
+          className={cn(
+            "relative overflow-hidden rounded-3xl border p-6 shadow-[0_20px_100px_rgba(88,28,135,0.2)]",
+            isDark
+              ? "border-white/10 bg-gradient-to-br from-[#090f21] via-[#050514] to-[#04000c] text-zinc-100"
+              : "border-slate-200 bg-gradient-to-br from-white via-slate-50 to-purple-50 text-slate-800"
+          )}
+        >
           <div className="absolute inset-y-0 right-6 w-48 rounded-full bg-gradient-to-b from-sky-500/40 via-purple-500/30 to-pink-500/20 blur-[120px]" />
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.4em] text-purple-300">
+              <p
+                className={cn(
+                  "text-xs uppercase tracking-[0.4em]",
+                  isDark ? "text-purple-300" : "text-purple-500"
+                )}
+              >
                 Orquestração inteligente
               </p>
               <h1 className="text-3xl font-semibold">
                 Playbooks com automação end-to-end
               </h1>
-              <p className="mt-2 text-sm text-zinc-400">
+              <p
+                className={cn(
+                  "mt-2 text-sm",
+                  isDark ? "text-zinc-400" : "text-slate-500"
+                )}
+              >
                 Desenhe fluxos, conecte automações Jira e scripts com a mesma
                 estética dos painéis React + Vite.
               </p>
             </div>
             <div className="flex flex-col items-start gap-3 text-sm md:flex-row md:items-center">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.4em] text-zinc-300">
+              <div
+                className={cn(
+                  "rounded-2xl border px-4 py-2 text-xs uppercase tracking-[0.4em]",
+                  isDark
+                    ? "border-white/10 bg-white/5 text-zinc-300"
+                    : "border-slate-200 bg-white text-slate-600"
+                )}
+              >
                 Pipelines ativos {playbooks.length}
               </div>
               <Button
                 onClick={() => setFormOpen((prev) => !prev)}
-                className="rounded-xl border border-white/20 bg-transparent px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/10"
+                className={cn(
+                  "rounded-xl border px-4 py-1.5 text-xs font-semibold",
+                  isDark
+                    ? "border-white/20 bg-transparent text-white hover:bg-white/10"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                )}
               >
                 {formOpen ? "Fechar criador" : "Novo playbook"}
               </Button>
@@ -235,16 +267,35 @@ export default function PlaybooksPage() {
         )}
 
         {formOpen && (
-          <Card className="border border-white/10 bg-white/5 backdrop-blur">
+          <Card
+            className={cn(
+              "border backdrop-blur",
+              isDark
+                ? "border-white/10 bg-white/5 text-white"
+                : "border-slate-200 bg-white text-slate-800"
+            )}
+          >
             <CardHeader>
-              <CardTitle className="text-base font-semibold text-white">
+              <CardTitle
+                className={cn(
+                  "text-base font-semibold",
+                  isDark ? "text-white" : "text-slate-800"
+                )}
+              >
                 Criar playbook automatizado
               </CardTitle>
             </CardHeader>
             <CardContent>
               <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
                 <div className="md:col-span-2">
-                  <label className="text-sm text-zinc-300">Nome do playbook</label>
+                  <label
+                    className={cn(
+                      "text-sm",
+                      isDark ? "text-zinc-300" : "text-slate-600"
+                    )}
+                  >
+                    Nome do playbook
+                  </label>
                   <Input
                     value={newPlaybook.name}
                     onChange={(event) =>
@@ -255,7 +306,14 @@ export default function PlaybooksPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm text-zinc-300">Squads envolvidas</label>
+                  <label
+                    className={cn(
+                      "text-sm",
+                      isDark ? "text-zinc-300" : "text-slate-600"
+                    )}
+                  >
+                    Squads envolvidas
+                  </label>
                   <Input
                     value={newPlaybook.squads}
                     onChange={(event) =>
@@ -269,7 +327,12 @@ export default function PlaybooksPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm text-zinc-300">
+                  <label
+                    className={cn(
+                      "text-sm",
+                      isDark ? "text-zinc-300" : "text-slate-600"
+                    )}
+                  >
                     Automations conectadas
                   </label>
                   <Input
@@ -285,7 +348,12 @@ export default function PlaybooksPage() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-sm text-zinc-300">
+                  <label
+                    className={cn(
+                      "text-sm",
+                      isDark ? "text-zinc-300" : "text-slate-600"
+                    )}
+                  >
                     Descrição / contexto
                   </label>
                   <Textarea
@@ -301,7 +369,12 @@ export default function PlaybooksPage() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-sm text-zinc-300">
+                  <label
+                    className={cn(
+                      "text-sm",
+                      isDark ? "text-zinc-300" : "text-slate-600"
+                    )}
+                  >
                     Passos (um por linha, formato: Título - detalhe)
                   </label>
                   <Textarea
@@ -317,7 +390,12 @@ export default function PlaybooksPage() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-sm text-zinc-300">
+                  <label
+                    className={cn(
+                      "text-sm",
+                      isDark ? "text-zinc-300" : "text-slate-600"
+                    )}
+                  >
                     Caminho do script (bash/python)
                   </label>
                   <div className="mt-1 flex gap-2">
@@ -334,7 +412,12 @@ export default function PlaybooksPage() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="whitespace-nowrap rounded-xl border-white/30 text-xs text-white hover:bg-white/10"
+                      className={cn(
+                        "whitespace-nowrap rounded-xl text-xs",
+                        isDark
+                          ? "border-white/30 text-white hover:bg-white/10"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-100"
+                      )}
                       onClick={() => setScriptModalOpen(true)}
                     >
                       Escolher script
@@ -344,7 +427,12 @@ export default function PlaybooksPage() {
                 <div className="md:col-span-2 flex justify-end">
                   <Button
                     type="submit"
-                    className="rounded-xl border border-white/20 bg-transparent px-4 py-1.5 text-xs text-white hover:bg-white/10"
+                    className={cn(
+                      "rounded-xl border px-4 py-1.5 text-xs",
+                      isDark
+                        ? "border-white/20 bg-transparent text-white hover:bg-white/10"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    )}
                     disabled={submitting}
                   >
                     {submitting ? "Salvando..." : "Salvar playbook"}
@@ -368,7 +456,14 @@ export default function PlaybooksPage() {
         />
 
         {loading ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-6 text-center text-sm text-zinc-300">
+          <div
+            className={cn(
+              "rounded-3xl border px-4 py-6 text-center text-sm",
+              isDark
+                ? "border-white/10 bg-white/5 text-zinc-300"
+                : "border-slate-200 bg-white text-slate-600"
+            )}
+          >
             Carregando playbooks...
           </div>
         ) : (
@@ -377,16 +472,33 @@ export default function PlaybooksPage() {
               {metrics.map((metric) => (
                 <Card
                   key={metric.label}
-                  className="border border-white/10 bg-gradient-to-br from-white/10 to-transparent text-white"
+                  className={cn(
+                    "border",
+                    isDark
+                      ? "border-white/10 bg-gradient-to-br from-white/10 to-transparent text-white"
+                      : "border-slate-200 bg-white text-slate-700"
+                  )}
                 >
                   <CardHeader className="space-y-1">
-                    <p className="text-[11px] uppercase tracking-[0.4em] text-zinc-300">
+                    <p
+                      className={cn(
+                        "text-[11px] uppercase tracking-[0.4em]",
+                        isDark ? "text-zinc-300" : "text-slate-400"
+                      )}
+                    >
                       {metric.label}
                     </p>
                     <p className="text-3xl font-bold">{metric.value}</p>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-zinc-400">{metric.helper}</p>
+                    <p
+                      className={cn(
+                        "text-sm",
+                        isDark ? "text-zinc-400" : "text-slate-500"
+                      )}
+                    >
+                      {metric.helper}
+                    </p>
                   </CardContent>
                 </Card>
               ))}
@@ -396,11 +508,21 @@ export default function PlaybooksPage() {
               {playbooks.map((playbook) => (
                 <Card
                   key={playbook.id}
-                  className="flex flex-col gap-4 border border-white/10 bg-[#040414]/80 p-4 text-zinc-100"
+                  className={cn(
+                    "flex flex-col gap-4 border p-4",
+                    isDark
+                      ? "border-white/10 bg-[#040414]/80 text-zinc-100"
+                      : "border-slate-200 bg-white text-slate-700 shadow-sm"
+                  )}
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm uppercase tracking-[0.4em] text-purple-300">
+                      <p
+                        className={cn(
+                          "text-sm uppercase tracking-[0.4em]",
+                          isDark ? "text-purple-300" : "text-purple-500"
+                        )}
+                      >
                         Playbook
                       </p>
                       <h3 className="text-xl font-semibold">{playbook.name}</h3>
@@ -416,44 +538,61 @@ export default function PlaybooksPage() {
                       {statusConfig[playbook.status]?.label ?? playbook.status}
                     </Badge>
                   </div>
-                  <p className="text-sm text-zinc-400">{playbook.description}</p>
-                  <div className="space-y-2 text-sm text-zinc-300">
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      <Layers className="h-4 w-4 text-purple-300" />
+                  <p
+                    className={cn(
+                      "text-sm",
+                      isDark ? "text-zinc-400" : "text-slate-500"
+                    )}
+                  >
+                    {playbook.description}
+                  </p>
+                  <div className={cn("space-y-2 text-sm", isDark ? "text-zinc-300" : "text-slate-600")}>
+                    <div className={cn("flex items-center gap-2", isDark ? "text-zinc-400" : "text-slate-500")}>
+                      <Layers className={cn("h-4 w-4", isDark ? "text-purple-300" : "text-purple-500")} />
                       <span>Squads</span>
                     </div>
-                    <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.3em] text-zinc-400">
+                    <div className={cn("flex flex-wrap gap-2 text-xs uppercase tracking-[0.3em]", isDark ? "text-zinc-400" : "text-slate-500")}>
                       {playbook.squads.map((squad) => (
                         <span
                           key={squad}
-                          className="rounded-full border border-white/10 px-3 py-1 text-zinc-200"
+                          className={cn(
+                            "rounded-full border px-3 py-1",
+                            isDark
+                              ? "border-white/10 text-zinc-200"
+                              : "border-slate-200 text-slate-600"
+                          )}
                         >
                           {squad}
                         </span>
                       ))}
                     </div>
-                    <div className="mt-3 flex items-center gap-2 text-zinc-400">
-                      <Workflow className="h-4 w-4 text-sky-300" />
+                    <div className={cn("mt-3 flex items-center gap-2", isDark ? "text-zinc-400" : "text-slate-500")}>
+                      <Workflow className={cn("h-4 w-4", isDark ? "text-sky-300" : "text-sky-500")} />
                       <span>Automations</span>
                     </div>
-                    <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-400">
+                    <ul className={cn("list-disc space-y-1 pl-5 text-xs", isDark ? "text-zinc-400" : "text-slate-500")}>
                       {playbook.automations.map((automation) => (
                         <li key={automation}>{automation}</li>
                       ))}
                     </ul>
                     {playbook.scriptPath && (
-                      <p className="text-[11px] text-zinc-500">
-                        Script: <span className="text-zinc-200">{playbook.scriptPath}</span>
+                      <p className={cn("text-[11px]", isDark ? "text-zinc-500" : "text-slate-500")}>
+                        Script: <span className={cn(isDark ? "text-zinc-200" : "text-slate-700")}>{playbook.scriptPath}</span>
                       </p>
                     )}
-                    <p className="text-xs text-zinc-500">
+                    <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-slate-500")}>
                       Última execução: {playbook.lastRun ?? "Ainda não executado"}
                     </p>
                   </div>
                   <div className="mt-auto flex flex-wrap gap-2">
                     <Button
                       variant="outline"
-                      className="rounded-xl border-white/20 px-3 py-1.5 text-xs text-white hover:bg-white/10"
+                      className={cn(
+                        "rounded-xl px-3 py-1.5 text-xs",
+                        isDark
+                          ? "border-white/20 text-white hover:bg-white/10"
+                          : "border-slate-200 text-slate-700 hover:bg-slate-100"
+                      )}
                       asChild
                     >
                       <Link href={`/playbooks/${playbook.id}`}>Abrir playbook</Link>

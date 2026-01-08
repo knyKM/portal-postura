@@ -25,6 +25,48 @@ import {
 
 const releases = [
   {
+    version: "1.5",
+    codename: "Topologia Viva",
+    releasedAt: "Dezembro/2025",
+    summary:
+      "Nova rota de topologia com diagrama interativo, persistência no banco e dashboards personalizados.",
+    highlights: [
+      {
+        icon: Layers,
+        title: "Topologia com drag & drop",
+        description:
+          "Canvas visual para montar diagramas de rede, adicionar máquinas e conectar nós.",
+        bullets: [
+          "Sidebar com acesso rápido à rota de topologia.",
+          "Arrastar dispositivos, reposicionar e criar links entre nós.",
+          "Zoom e grid para alinhar elementos com precisão.",
+        ],
+      },
+      {
+        icon: Palette,
+        title: "Dispositivos personalizados",
+        description:
+          "Criação de novos tipos de dispositivo com ícone e edição de metadados.",
+        bullets: [
+          "Tipos personalizados com ícone próprio e renomeação inline.",
+          "Campos extras por dispositivo (IP e descrição).",
+          "Tipos e diagramas salvos no banco de dados.",
+        ],
+      },
+      {
+        icon: Blocks,
+        title: "Templates de dashboard",
+        description:
+          "Seleção de dashboards personalizados em insights e editor com widgets.",
+        bullets: [
+          "Select de dashboards com opção de criar novo template.",
+          "Editor com drag & drop, redimensionamento e grade de alinhamento.",
+          "Salvar layout por template via banco.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4",
     codename: "Orquestrações Jira",
     releasedAt: "Dezembro/2025",
@@ -364,15 +406,37 @@ export default function ChangelogPage() {
             </div>
           </div>
 
-          <div className="mt-6 space-y-4 rounded-2xl border border-white/5 bg-black/20 p-5 backdrop-blur md:flex md:items-center md:justify-between md:space-y-0 md:space-x-6 lg:p-6">
+          <div
+            className={cn(
+              "mt-6 space-y-4 rounded-2xl border p-5 backdrop-blur md:flex md:items-center md:justify-between md:space-y-0 md:space-x-6 lg:p-6",
+              isDark
+                ? "border-white/5 bg-black/20"
+                : "border-slate-200 bg-gradient-to-r from-white via-slate-50 to-purple-50"
+            )}
+          >
             <div>
-              <p className="text-sm uppercase tracking-[0.3em] text-purple-300">
+              <p
+                className={cn(
+                  "text-sm uppercase tracking-[0.3em]",
+                  isDark ? "text-purple-300" : "text-purple-500"
+                )}
+              >
                 Ideias
               </p>
-              <h3 className="text-xl font-semibold text-white">
+              <h3
+                className={cn(
+                  "text-xl font-semibold",
+                  isDark ? "text-white" : "text-slate-800"
+                )}
+              >
                 Tem alguma automação, ferramenta ou métrica que gostaria de ver?
               </h3>
-              <p className="text-sm text-zinc-400">
+              <p
+                className={cn(
+                  "text-sm",
+                  isDark ? "text-zinc-400" : "text-slate-500"
+                )}
+              >
                 Compartilhe seu pensamento e ajudaremos a priorizar os próximos ciclos do Postura SM.
               </p>
             </div>
@@ -382,7 +446,12 @@ export default function ChangelogPage() {
                 setIsSuggesting((prev) => !prev);
                 setSuggestionFeedback(null);
               }}
-              className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-pink-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.02]"
+              className={cn(
+                "inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.02]",
+                isDark
+                  ? "bg-gradient-to-r from-pink-500 to-purple-500"
+                  : "bg-gradient-to-r from-purple-500 to-indigo-500"
+              )}
             >
               {isSuggesting ? "Fechar formulário" : "Propor nova ideia"}
             </button>

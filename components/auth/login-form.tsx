@@ -163,7 +163,7 @@ export function LoginForm() {
           Entrar com SSO (em breve)
         </Button>
         <p className="text-center text-[11px] text-zinc-500">
-          Ambiente de demonstração seguro.
+          Ambiente de demonstração seguro · v1.5.0
         </p>
       </CardFooter>
     </Card>

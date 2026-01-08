@@ -5,3 +5,30 @@ dist/
 build/
 coverage/
 *.log
+.next/
+out/
+.turbo/
+.cache/
+
+# Next.js
+.next/
+out/
+dist/
+node_modules/
+
+# caches
+.turbo/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# big artifacts
+*.tgz
+offline-npm-cache.tgz
+# offline npm cache (NUNCA versionar)
+offline-npm-cache/
+offline-npm-cache.tgz
+offline-npm-cache*.tgz
+*.sst

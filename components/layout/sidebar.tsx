@@ -26,7 +26,6 @@ import {
   Workflow,
   ClipboardCheck,
   History,
-  KanbanSquare,
   Activity,
   Sparkles,
   Blocks,
@@ -62,7 +61,6 @@ const navItems: NavItem[] = [
     href: "/sugestoes",
     requiresAdmin: true,
   },
-  { label: "Kanban", icon: KanbanSquare, href: "/kanban" },
   {
     label: "Fila de Aprovações",
     icon: ClipboardCheck,
@@ -410,7 +408,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 >
                   Postura Security Management
                 </p>
-                <p>v1.4.0</p>
+                <p>v1.5.0</p>
               </div>
 
               {/* Botão tema claro/escuro */}
@@ -448,7 +446,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   <Sun className="h-3 w-3" />
                 )}
               </button>
-              <span className="text-[9px]">v1.4.0</span>
+              <span className="text-[9px]">v1.5.0</span>
             </div>
           )}
         </div>

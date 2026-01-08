@@ -61,6 +61,7 @@ type ActionFormProps = {
   uploadedFileName: string | null;
   projectOptions: Array<{ value: string; label: string }>;
   csvTemplateUrl: string;
+  idsTemplateUrl: string;
 };
 
 type FieldBlockProps = {
@@ -114,6 +115,7 @@ export function ActionForm(props: ActionFormProps) {
     uploadedFileName,
     projectOptions,
     csvTemplateUrl,
+    idsTemplateUrl,
   } = props;
 
   const isEscalate = selectedAction === "escalate";
@@ -446,6 +448,9 @@ export function ActionForm(props: ActionFormProps) {
                 className={inputClasses}
               />
             </FieldBlock>
+            <p className={cn("text-[11px]", subtleText)}>
+              Apenas issues do projeto ASSETN podem ser reatribuídas por aqui.
+            </p>
             <p className={cn("text-[11px]", subtleText)}>
               Quando integrado ao Jira, a automação verificará se o usuário tem permissão no projeto antes de aplicar.
             </p>
@@ -850,6 +855,16 @@ export function ActionForm(props: ActionFormProps) {
           Liste apenas IDs válidos do Jira separados por vírgula ou quebra de linha. Esta ação removerá
           definitivamente os registros.
         </p>
+        <a
+          href={idsTemplateUrl}
+          download
+          className={cn(
+            "mt-2 inline-flex items-center justify-center rounded-xl px-3 py-1 text-xs font-semibold",
+            isDark ? "bg-white/10 text-white" : "bg-white text-purple-700 shadow"
+          )}
+        >
+          Baixar template de IDs
+        </a>
       </FieldBlock>
   ) : (
     <FieldBlock label="Conjunto de issues" labelClassName={labelColor}>
@@ -895,7 +910,11 @@ export function ActionForm(props: ActionFormProps) {
         className={textareaClasses}
         placeholder={
           filterMode === "jql"
-            ? 'Ex: project = POSTURA AND status in ("To Do","In Progress")'
+            ? selectedAction === "assignee"
+              ? 'project = ASSETN AND status in ("To Do","In Progress")'
+              : 'Ex: project = POSTURA AND status in ("To Do","In Progress")'
+            : selectedAction === "assignee"
+            ? "ASSETN-123, ASSETN-456"
             : "ISSUE-1, ISSUE-2, ISSUE-3"
         }
         value={filterValue}
@@ -922,7 +941,11 @@ export function ActionForm(props: ActionFormProps) {
       )}
       <p className={cn("text-[11px]", subtleText)}>
         {filterMode === "jql"
-          ? "Adicione uma consulta JQL completa para selecionar as issues."
+          ? selectedAction === "assignee"
+            ? "A consulta já deve iniciar com project = ASSETN."
+            : "Adicione uma consulta JQL completa para selecionar as issues."
+          : selectedAction === "assignee"
+          ? "Informe apenas IDs iniciados com ASSETN-, separados por vírgula ou quebra de linha."
           : "Informe os IDs separados por vírgula ou quebra de linha."}
       </p>
       {filterMode === "ids" && (
@@ -954,6 +977,16 @@ export function ActionForm(props: ActionFormProps) {
               onChange={handleDataFileChange}
             />
           </label>
+          <a
+            href={idsTemplateUrl}
+            download
+            className={cn(
+              "mt-3 inline-flex items-center justify-center rounded-xl px-3 py-1 text-[11px] font-semibold",
+              isDark ? "bg-white/10 text-white" : "bg-white text-purple-700 shadow"
+            )}
+          >
+            Baixar template de IDs
+          </a>
           {uploadedFileName && (
             <p className={cn("mt-2 text-[11px]", subtleText)}>
               Arquivo enviado: {uploadedFileName}

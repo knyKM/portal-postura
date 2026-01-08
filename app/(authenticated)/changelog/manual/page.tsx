@@ -333,7 +333,7 @@ const manualSections: ManualSection[] = [
       {
         title: "Atualizar status via API externa",
         detail:
-          "O serviço que executa o job deve chamar POST /api/auditoria/jobs/:id/status com status=0/1/2, tempos e logs para refletir em tempo real.",
+          "O serviço que executa o job deve chamar POST /api/auditoria/jobs/:id/status com status=0/1/2, tempos e logs para refletir em tempo real (0=falhou, 1=sucesso, 2=em execução).",
       },
     ],
     apis: [
@@ -357,6 +357,8 @@ const manualSections: ManualSection[] = [
     ],
     notes: [
       "Os inputs aceitam apenas valores numéricos e convertem strings vazias para zero antes de enviar.",
+      "Status aceitos no POST /api/auditoria/jobs/:id/status: 0 (falhou), 1 (sucesso) e 2 (em execução).",
+      "O status 'pending' é gerado internamente na criação do job e não é aceito no POST.",
     ],
   },
   {
@@ -741,7 +743,7 @@ export default function ChangelogManualPage() {
             >
               <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.3em]">
                 <span>Última revisão</span>
-                <span>Release 1.4</span>
+                <span>Release 1.5</span>
               </div>
               <p>
                 Escopo cobre 19 rotas autenticadas, fluxos de MFA e 17 endpoints públicos em /api.
@@ -751,7 +753,7 @@ export default function ChangelogManualPage() {
         </section>
 
         <section className={cardSurface}>
-          <CardHeader className="pb-4">
+          <CardHeader className="pb-4 pt-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.4em] text-purple-300">
@@ -774,8 +776,8 @@ export default function ChangelogManualPage() {
             </div>
           </CardHeader>
           <Separator className={isDark ? "border-white/5" : "border-slate-200"} />
-          <CardContent className="pt-4">
-            <ol className="grid gap-3 md:grid-cols-2">
+          <CardContent className="pt-3">
+            <ol className="grid gap-2 md:grid-cols-2">
               {manualSections.map((section, index) => {
                 const step = String(index + 1).padStart(2, "0");
                 return (
@@ -783,22 +785,24 @@ export default function ChangelogManualPage() {
                     <Link
                       href={`#${section.id}`}
                       className={cn(
-                        "flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-medium transition",
+                        "flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-xs font-medium transition",
                         isDark
                           ? "border-white/5 bg-white/5 text-white hover:border-white/20 hover:bg-white/10"
                           : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white"
                       )}
                     >
-                      <span className="flex items-center gap-3">
+                      <span className="flex min-w-0 items-center gap-3">
                         <span
                           className={cn(
-                            "inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold",
-                            isDark ? "bg-white/10 text-white" : "bg-white text-slate-800"
+                            "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold",
+                            isDark
+                              ? "bg-white/10 text-white"
+                              : "bg-white text-slate-800 shadow-sm"
                           )}
                         >
                           {step}
                         </span>
-                        {section.title}
+                        <span className="truncate leading-tight">{section.title}</span>
                       </span>
                       <ArrowUpRight className="h-4 w-4 shrink-0" />
                     </Link>

@@ -35,6 +35,7 @@ export default function ConfiguracoesPage() {
   const [loadingJiraToken, setLoadingJiraToken] = useState(true);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
+  const [isTestingJira, setIsTestingJira] = useState(false);
 
   // pega dados básicos do usuário só para exibir na tela
   useEffect(() => {
@@ -347,7 +348,57 @@ export default function ConfiguracoesPage() {
                   O token será usado para autenticar chamadas às APIs do Jira nas automações.
                 </p>
               </div>
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={loadingJiraToken || isTestingJira}
+                  onClick={async () => {
+                    try {
+                      if (!jiraUrl.trim()) {
+                        setJiraError("Informe a URL do Jira antes de testar.");
+                        return;
+                      }
+                      setJiraError(null);
+                      setJiraMessage(null);
+                      setIsTestingJira(true);
+                      const response = await fetch(
+                        "/api/integrations/jira-test",
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            token: jiraToken,
+                            url: jiraUrl,
+                          }),
+                        }
+                      );
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        throw new Error(
+                          data?.error || "Falha ao testar a comunicação."
+                        );
+                      }
+                      setJiraMessage("Conexão com o Jira confirmada.");
+                    } catch (err) {
+                      setJiraError(
+                        err instanceof Error
+                          ? err.message
+                          : "Não foi possível testar a comunicação."
+                      );
+                    } finally {
+                      setIsTestingJira(false);
+                    }
+                  }}
+                  className={cn(
+                    "rounded-xl",
+                    isDark
+                      ? "border-zinc-700 text-zinc-200 hover:border-zinc-500"
+                      : "border-slate-300 text-slate-700 hover:border-slate-400"
+                  )}
+                >
+                  {isTestingJira ? "Testando..." : "Testar conexão"}
+                </Button>
                 <Button
                   type="button"
                   disabled={loadingJiraToken}
