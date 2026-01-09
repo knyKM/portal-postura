@@ -32,6 +32,7 @@ export default function ConfiguracoesPage() {
   const isDark = theme === "dark";
   const [jiraToken, setJiraToken] = useState("");
   const [jiraUrl, setJiraUrl] = useState("");
+  const [jiraVerifySsl, setJiraVerifySsl] = useState(true);
   const [loadingJiraToken, setLoadingJiraToken] = useState(true);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
@@ -332,6 +333,14 @@ export default function ConfiguracoesPage() {
                 <p className="text-[11px] text-zinc-500">
                   Informe o domínio do Jira que será utilizado nas automações.
                 </p>
+                <label className="flex items-center gap-2 text-[11px] text-zinc-500">
+                  <input
+                    type="checkbox"
+                    checked={!jiraVerifySsl}
+                    onChange={(event) => setJiraVerifySsl(!event.target.checked)}
+                  />
+                  Ignorar verificação SSL (ambiente interno)
+                </label>
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-zinc-400">
@@ -370,6 +379,7 @@ export default function ConfiguracoesPage() {
                           body: JSON.stringify({
                             token: jiraToken,
                             url: jiraUrl,
+                            verifySsl: jiraVerifySsl,
                           }),
                         }
                       );

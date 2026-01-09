@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { Agent } from "undici";
 import { getSessionUser } from "@/lib/auth/session";
 
 type JiraTestPayload = {
   url?: string;
   token?: string;
+  verifySsl?: boolean;
 };
 
 export async function POST(request: Request) {
@@ -15,6 +17,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as JiraTestPayload | null;
   const url = body?.url?.trim() ?? "";
   const token = body?.token?.trim() ?? "";
+  const verifySsl = body?.verifySsl ?? true;
 
   if (!url) {
     return NextResponse.json(
@@ -35,10 +38,14 @@ export async function POST(request: Request) {
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
+    const dispatcher = verifySsl
+      ? undefined
+      : new Agent({ connect: { rejectUnauthorized: false } });
     const response = await fetch(target, {
       method: "GET",
       headers,
       signal: controller.signal,
+      dispatcher,
     });
 
     if (!response.ok) {
