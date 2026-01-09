@@ -77,6 +77,13 @@ export function listRecentRequests(limit = 5) {
   return stmt.all(limit);
 }
 
+export function getActionRequestById(id: number) {
+  const stmt = db.prepare<ActionRequestRecord>(
+    "SELECT * FROM action_requests WHERE id = ?"
+  );
+  return stmt.get(id);
+}
+
 export function listPendingRequests(limit = 20) {
   const stmt = db.prepare<ActionRequestRecord>(
     `SELECT * FROM action_requests

@@ -33,6 +33,7 @@ export default function ConfiguracoesPage() {
   const [jiraToken, setJiraToken] = useState("");
   const [jiraUrl, setJiraUrl] = useState("");
   const [jiraVerifySsl, setJiraVerifySsl] = useState(true);
+  const [jiraMaxResults, setJiraMaxResults] = useState(200);
   const [loadingJiraToken, setLoadingJiraToken] = useState(true);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
@@ -65,6 +66,10 @@ export default function ConfiguracoesPage() {
         }
         setJiraToken(data?.token ?? "");
         setJiraUrl(data?.url ?? "");
+        setJiraVerifySsl(data?.verifySsl ?? true);
+        setJiraMaxResults(
+          typeof data?.maxResults === "number" ? data.maxResults : 200
+        );
       })
       .catch((err) => {
         setJiraError(
@@ -357,6 +362,27 @@ export default function ConfiguracoesPage() {
                   O token será usado para autenticar chamadas às APIs do Jira nas automações.
                 </p>
               </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">
+                  Limite máximo de issues por ação
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={jiraMaxResults}
+                  disabled={loadingJiraToken}
+                  onChange={(event) =>
+                    setJiraMaxResults(
+                      Math.max(1, Math.floor(Number(event.target.value || 1)))
+                    )
+                  }
+                  placeholder="Ex: 200"
+                />
+                <p className="text-[11px] text-zinc-500">
+                  Controla quantas issues podem ser processadas em uma aprovação de
+                  alteração de status.
+                </p>
+              </div>
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
@@ -380,6 +406,7 @@ export default function ConfiguracoesPage() {
                             token: jiraToken,
                             url: jiraUrl,
                             verifySsl: jiraVerifySsl,
+                            maxResults: jiraMaxResults,
                           }),
                         }
                       );
@@ -424,6 +451,7 @@ export default function ConfiguracoesPage() {
                           body: JSON.stringify({
                             token: jiraToken,
                             url: jiraUrl,
+                            verifySsl: jiraVerifySsl,
                           }),
                         }
                       );

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { Agent } from "undici";
 import { getSessionUser } from "@/lib/auth/session";
 import {
   createActionRequest,
+  getActionRequestById,
   listPendingRequests,
   listRecentRequests,
   listCompletedRequests,
@@ -11,6 +13,7 @@ import {
 } from "@/lib/actions/action-request-service";
 import { listAdmins } from "@/lib/auth/user-service";
 import { createNotification } from "@/lib/notifications/notification-service";
+import { getIntegrationSetting } from "@/lib/settings/integration-settings";
 
 type ActionRequestPayload = {
   actionType?: string;
@@ -43,6 +46,14 @@ const ACTION_LABELS: Record<string, string> = {
   delete: "deletar issue",
 };
 
+const DEFAULT_MAX_JIRA_RESULTS = 200;
+
+type JiraConfig = {
+  url: string;
+  token: string;
+  verifySsl: boolean;
+};
+
 function serializeRequest(record: ActionRequestRecord) {
   return {
     id: record.id,
@@ -66,6 +77,149 @@ function safeParsePayload(raw: string) {
     return JSON.parse(raw);
   } catch {
     return null;
+  }
+}
+
+function getJiraConfig(): JiraConfig {
+  const url = getIntegrationSetting("jira_url") ?? "";
+  const token = getIntegrationSetting("jira_token") ?? "";
+  const verifySetting = getIntegrationSetting("jira_verify_ssl");
+  return { url, token, verifySsl: verifySetting !== "false" };
+}
+
+function normalizeJiraUrl(url: string) {
+  return url.replace(/\/+$/, "");
+}
+
+function buildJiraHeaders(token: string) {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+function parseIssueIds(raw: string) {
+  return raw
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function jiraFetch(
+  config: JiraConfig,
+  path: string,
+  init?: RequestInit
+) {
+  const baseUrl = normalizeJiraUrl(config.url);
+  const dispatcher = config.verifySsl
+    ? undefined
+    : new Agent({ connect: { rejectUnauthorized: false } });
+  return fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      ...buildJiraHeaders(config.token),
+    },
+    dispatcher,
+  });
+}
+
+async function fetchIssuesByJql(
+  config: JiraConfig,
+  jql: string,
+  maxResultsLimit: number
+) {
+  const issues: Array<{ key: string }> = [];
+  let startAt = 0;
+  const maxResults = 100;
+
+  while (issues.length < maxResultsLimit) {
+    const response = await jiraFetch(
+      config,
+      `/rest/api/3/search?jql=${encodeURIComponent(
+        jql
+      )}&startAt=${startAt}&maxResults=${maxResults}&fields=key`
+    );
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        data?.errorMessages?.[0] ||
+          `Falha ao consultar issues (status ${response.status}).`
+      );
+    }
+    const fetched = Array.isArray(data?.issues) ? data.issues : [];
+    issues.push(
+      ...fetched
+        .map((item: { key?: string }) => item?.key)
+        .filter((key: string | undefined) => typeof key === "string")
+        .map((key: string) => ({ key }))
+    );
+    const total = typeof data?.total === "number" ? data.total : issues.length;
+    startAt += maxResults;
+    if (issues.length >= total) {
+      break;
+    }
+    if (issues.length >= maxResultsLimit) {
+      break;
+    }
+  }
+
+  if (issues.length >= maxResultsLimit) {
+    throw new Error(
+      `A consulta retornou mais de ${maxResultsLimit} issues. Refine a JQL antes de aprovar.`
+    );
+  }
+
+  return issues;
+}
+
+async function transitionIssue(
+  config: JiraConfig,
+  issueKey: string,
+  targetStatus: string
+) {
+  const transitionsResponse = await jiraFetch(
+    config,
+    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`
+  );
+  const transitionsData = await transitionsResponse.json().catch(() => null);
+  if (!transitionsResponse.ok) {
+    throw new Error(
+      transitionsData?.errorMessages?.[0] ||
+        `Falha ao buscar transições da issue ${issueKey}.`
+    );
+  }
+  const transitions = Array.isArray(transitionsData?.transitions)
+    ? transitionsData.transitions
+    : [];
+  const match = transitions.find(
+    (transition: { name?: string }) =>
+      transition?.name?.toLowerCase() === targetStatus.toLowerCase()
+  );
+  if (!match?.id) {
+    throw new Error(
+      `Transição "${targetStatus}" não encontrada para a issue ${issueKey}.`
+    );
+  }
+
+  const transitionResponse = await jiraFetch(
+    config,
+    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transition: { id: match.id } }),
+    }
+  );
+  if (!transitionResponse.ok) {
+    const transitionError = await transitionResponse.json().catch(() => null);
+    throw new Error(
+      transitionError?.errorMessages?.[0] ||
+        `Falha ao aplicar a transição na issue ${issueKey}.`
+    );
   }
 }
 
@@ -427,6 +581,82 @@ export async function PATCH(request: Request) {
       { error: "Informe o motivo da aprovação ou declínio." },
       { status: 400 }
     );
+  }
+
+  const targetRequest = getActionRequestById(id);
+  if (!targetRequest) {
+    return NextResponse.json(
+      { error: "Solicitação não encontrada." },
+      { status: 404 }
+    );
+  }
+
+  if (decision === "approve" && targetRequest.action_type === "status") {
+    const jiraConfig = getJiraConfig();
+    if (!jiraConfig.url || !jiraConfig.token) {
+      return NextResponse.json(
+        { error: "Integração Jira não configurada." },
+        { status: 400 }
+      );
+    }
+    const maxResultsSetting = Number(
+      getIntegrationSetting("jira_max_results") ?? DEFAULT_MAX_JIRA_RESULTS
+    );
+    const maxResultsLimit = Number.isFinite(maxResultsSetting)
+      ? Math.max(1, Math.floor(maxResultsSetting))
+      : DEFAULT_MAX_JIRA_RESULTS;
+    const targetStatus = targetRequest.requested_status?.trim();
+    if (!targetStatus) {
+      return NextResponse.json(
+        { error: "Status solicitado inválido." },
+        { status: 400 }
+      );
+    }
+
+    let issueKeys: string[] = [];
+    if (targetRequest.filter_mode === "ids") {
+      issueKeys = parseIssueIds(targetRequest.filter_value);
+    } else if (targetRequest.filter_mode === "jql") {
+      const issues = await fetchIssuesByJql(
+        jiraConfig,
+        targetRequest.filter_value,
+        maxResultsLimit
+      );
+      issueKeys = issues.map((issue) => issue.key);
+    } else {
+      return NextResponse.json(
+        { error: "Filtro inválido para alteração de status." },
+        { status: 400 }
+      );
+    }
+
+    if (!issueKeys.length) {
+      return NextResponse.json(
+        { error: "Nenhuma issue encontrada para processar." },
+        { status: 400 }
+      );
+    }
+
+    const failures: string[] = [];
+    for (const key of issueKeys) {
+      try {
+        await transitionIssue(jiraConfig, key, targetStatus);
+      } catch (err) {
+        failures.push(
+          err instanceof Error ? err.message : `Falha ao atualizar ${key}.`
+        );
+      }
+    }
+
+    if (failures.length) {
+      return NextResponse.json(
+        {
+          error: "Não foi possível atualizar todas as issues.",
+          details: failures.slice(0, 5),
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const newStatus = decision === "approve" ? "approved" : "declined";
