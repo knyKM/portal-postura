@@ -181,6 +181,13 @@ async function transitionIssue(
   issueKey: string,
   targetStatus: string
 ) {
+  const normalizeStatus = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
   const transitionsResponse = await jiraFetch(
     config,
     `/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`
@@ -195,12 +202,28 @@ async function transitionIssue(
   const transitions = Array.isArray(transitionsData?.transitions)
     ? transitionsData.transitions
     : [];
-  const normalizedTarget = targetStatus.toLowerCase();
-  const match = transitions.find((transition: { name?: string; to?: { name?: string } }) => {
-    const transitionName = transition?.name?.toLowerCase();
-    const targetName = transition?.to?.name?.toLowerCase();
-    return transitionName === normalizedTarget || targetName === normalizedTarget;
-  });
+  const normalizedTarget = normalizeStatus(targetStatus);
+  const match = transitions.find(
+    (transition: {
+      name?: string;
+      to?: { name?: string; statusCategory?: { name?: string } };
+    }) => {
+      const transitionName = transition?.name
+        ? normalizeStatus(transition.name)
+        : "";
+      const targetName = transition?.to?.name
+        ? normalizeStatus(transition.to.name)
+        : "";
+      const categoryName = transition?.to?.statusCategory?.name
+        ? normalizeStatus(transition.to.statusCategory.name)
+        : "";
+      return (
+        transitionName === normalizedTarget ||
+        targetName === normalizedTarget ||
+        (normalizedTarget === "done" && categoryName === "done")
+      );
+    }
+  );
   if (!match?.id) {
     throw new Error(
       `Transição "${targetStatus}" não encontrada para a issue ${issueKey}.`

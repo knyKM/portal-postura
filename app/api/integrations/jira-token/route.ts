@@ -22,7 +22,10 @@ export async function GET(request: Request) {
     token: token ?? "",
     url: url ?? "",
     verifySsl: verifySsl !== "false",
-    maxResults: Number.isFinite(maxResults) ? maxResults : DEFAULT_JIRA_MAX_RESULTS,
+    maxResults:
+      Number.isFinite(maxResults) && maxResults > 0
+        ? maxResults
+        : DEFAULT_JIRA_MAX_RESULTS,
   });
 }
 

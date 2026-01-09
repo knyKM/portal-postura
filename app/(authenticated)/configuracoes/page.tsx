@@ -67,8 +67,11 @@ export default function ConfiguracoesPage() {
         setJiraToken(data?.token ?? "");
         setJiraUrl(data?.url ?? "");
         setJiraVerifySsl(data?.verifySsl ?? true);
+        const parsedMaxResults = Number(data?.maxResults ?? 200);
         setJiraMaxResults(
-          typeof data?.maxResults === "number" ? data.maxResults : 200
+          Number.isFinite(parsedMaxResults) && parsedMaxResults > 0
+            ? parsedMaxResults
+            : 200
         );
       })
       .catch((err) => {
