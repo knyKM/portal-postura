@@ -419,7 +419,7 @@ export function ActionForm(props: ActionFormProps) {
                   isDark ? "text-zinc-100" : "text-slate-700"
                 )}
               >
-                {["DONE", "Cancelado"].map((status) => (
+                {["Done", "Cancelado"].map((status) => (
                   <option
                     key={status}
                     value={status}

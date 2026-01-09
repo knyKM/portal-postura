@@ -460,6 +460,12 @@ export default function ConfiguracoesPage() {
                         throw new Error(data?.error || "Falha ao salvar token.");
                       }
                       setJiraMessage("Token salvo com sucesso.");
+                      setJiraVerifySsl(data?.verifySsl ?? jiraVerifySsl);
+                      setJiraMaxResults(
+                        typeof data?.maxResults === "number"
+                          ? data.maxResults
+                          : jiraMaxResults
+                      );
                     } catch (err) {
                       setJiraError(
                         err instanceof Error

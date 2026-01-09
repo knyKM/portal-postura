@@ -28,7 +28,7 @@ type ActionRequestPayload = {
   csvFileName?: string;
 };
 
-const ALLOWED_STATUS = ["DONE", "Cancelado"];
+const ALLOWED_STATUS = ["Done", "Cancelado"];
 const SUPPORTED_ACTIONS = [
   "status",
   "assignee",

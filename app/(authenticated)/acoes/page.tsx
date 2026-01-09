@@ -68,7 +68,7 @@ const projectOptions = [
   { value: "OPENCVE", label: "OPENCVE - CVEs Emergenciais" },
 ];
 
-const statusOptions = ["DONE", "Cancelado"];
+const statusOptions = ["Done", "Cancelado"];
 const assigneeProjectKey = "ASSETN";
 const assigneeJqlPrefix = `project = ${assigneeProjectKey} AND `;
 
