@@ -195,10 +195,12 @@ async function transitionIssue(
   const transitions = Array.isArray(transitionsData?.transitions)
     ? transitionsData.transitions
     : [];
-  const match = transitions.find(
-    (transition: { name?: string }) =>
-      transition?.name?.toLowerCase() === targetStatus.toLowerCase()
-  );
+  const normalizedTarget = targetStatus.toLowerCase();
+  const match = transitions.find((transition: { name?: string; to?: { name?: string } }) => {
+    const transitionName = transition?.name?.toLowerCase();
+    const targetName = transition?.to?.name?.toLowerCase();
+    return transitionName === normalizedTarget || targetName === normalizedTarget;
+  });
   if (!match?.id) {
     throw new Error(
       `Transição "${targetStatus}" não encontrada para a issue ${issueKey}.`

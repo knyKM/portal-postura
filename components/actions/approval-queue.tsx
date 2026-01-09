@@ -120,7 +120,13 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(data?.error || "Falha ao atualizar a solicitação.");
+        const details =
+          Array.isArray(data?.details) && data.details.length
+            ? ` Detalhes: ${data.details.join(" | ")}`
+            : "";
+        throw new Error(
+          `${data?.error || "Falha ao atualizar a solicitação."}${details}`
+        );
       }
       setRequests((prev) => prev.filter((request) => request.id !== id));
       setNotesById((prev) => {
