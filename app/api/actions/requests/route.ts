@@ -148,7 +148,7 @@ async function fetchIssuesByJql(
   while (issues.length < maxResultsLimit) {
     const response = await jiraFetch(
       config,
-      `/rest/api/3/search?jql=${encodeURIComponent(
+      `/rest/api/2/search?jql=${encodeURIComponent(
         jql
       )}&startAt=${startAt}&maxResults=${maxResults}&fields=key`
     );
@@ -200,7 +200,7 @@ async function transitionIssue(
       .toLowerCase();
   const transitionsResponse = await jiraFetch(
     config,
-    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}/transitions`
   );
   const transitionsData = await transitionsResponse.json().catch(() => null);
   if (!transitionsResponse.ok) {
@@ -243,7 +243,7 @@ async function transitionIssue(
 
   const transitionResponse = await jiraFetch(
     config,
-    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`,
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}/transitions`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -669,7 +669,7 @@ export async function PATCH(request: Request) {
           );
         }
         return NextResponse.json(
-          { error: "Sem resposta do Jira.", status: 502 },
+          { error: "", status: 502 },
           { status: 502 }
         );
       }
@@ -703,7 +703,7 @@ export async function PATCH(request: Request) {
           failures.push({
             issueKey: key,
             status: 502,
-            message: "Sem resposta do Jira.",
+            message: "",
           });
         }
       }
