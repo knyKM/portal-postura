@@ -54,6 +54,15 @@ type JiraConfig = {
   verifySsl: boolean;
 };
 
+class JiraApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function serializeRequest(record: ActionRequestRecord) {
   return {
     id: record.id,
@@ -145,9 +154,10 @@ async function fetchIssuesByJql(
     );
     const data = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(
+      throw new JiraApiError(
         data?.errorMessages?.[0] ||
-          `Falha ao consultar issues (status ${response.status}).`
+          `Falha ao consultar issues (status ${response.status}).`,
+        response.status
       );
     }
     const fetched = Array.isArray(data?.issues) ? data.issues : [];
@@ -194,9 +204,10 @@ async function transitionIssue(
   );
   const transitionsData = await transitionsResponse.json().catch(() => null);
   if (!transitionsResponse.ok) {
-    throw new Error(
+    throw new JiraApiError(
       transitionsData?.errorMessages?.[0] ||
-        `Falha ao buscar transições da issue ${issueKey}.`
+        `Falha ao buscar transições da issue ${issueKey}.`,
+      transitionsResponse.status
     );
   }
   const transitions = Array.isArray(transitionsData?.transitions)
@@ -241,9 +252,10 @@ async function transitionIssue(
   );
   if (!transitionResponse.ok) {
     const transitionError = await transitionResponse.json().catch(() => null);
-    throw new Error(
+    throw new JiraApiError(
       transitionError?.errorMessages?.[0] ||
-        `Falha ao aplicar a transição na issue ${issueKey}.`
+        `Falha ao aplicar a transição na issue ${issueKey}.`,
+      transitionResponse.status
     );
   }
 }
@@ -642,12 +654,25 @@ export async function PATCH(request: Request) {
     if (targetRequest.filter_mode === "ids") {
       issueKeys = parseIssueIds(targetRequest.filter_value);
     } else if (targetRequest.filter_mode === "jql") {
-      const issues = await fetchIssuesByJql(
-        jiraConfig,
-        targetRequest.filter_value,
-        maxResultsLimit
-      );
-      issueKeys = issues.map((issue) => issue.key);
+      try {
+        const issues = await fetchIssuesByJql(
+          jiraConfig,
+          targetRequest.filter_value,
+          maxResultsLimit
+        );
+        issueKeys = issues.map((issue) => issue.key);
+      } catch (err) {
+        if (err instanceof JiraApiError) {
+          return NextResponse.json(
+            { error: err.message, status: err.status },
+            { status: err.status }
+          );
+        }
+        return NextResponse.json(
+          { error: "Sem resposta do Jira.", status: 502 },
+          { status: 502 }
+        );
+      }
     } else {
       return NextResponse.json(
         { error: "Filtro inválido para alteração de status." },
@@ -662,24 +687,37 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const failures: string[] = [];
+    const failures: Array<{ issueKey: string; status: number; message: string }> =
+      [];
     for (const key of issueKeys) {
       try {
         await transitionIssue(jiraConfig, key, targetStatus);
       } catch (err) {
-        failures.push(
-          err instanceof Error ? err.message : `Falha ao atualizar ${key}.`
-        );
+        if (err instanceof JiraApiError) {
+          failures.push({
+            issueKey: key,
+            status: err.status,
+            message: err.message,
+          });
+        } else {
+          failures.push({
+            issueKey: key,
+            status: 502,
+            message: "Sem resposta do Jira.",
+          });
+        }
       }
     }
 
     if (failures.length) {
+      const primaryFailure = failures[0];
       return NextResponse.json(
         {
-          error: "Não foi possível atualizar todas as issues.",
-          details: failures.slice(0, 5),
+          error: primaryFailure.message,
+          status: primaryFailure.status,
+          failures: failures.slice(0, 5),
         },
-        { status: 400 }
+        { status: primaryFailure.status }
       );
     }
   }
