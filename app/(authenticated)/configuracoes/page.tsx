@@ -415,17 +415,15 @@ export default function ConfiguracoesPage() {
                       );
                       const data = await response.json().catch(() => null);
                       if (!response.ok) {
-                        throw new Error(
-                          data?.error || "Falha ao testar a comunicação."
-                        );
+                        const statusInfo =
+                          typeof data?.status === "number"
+                            ? ` (status ${data.status})`
+                            : ` (status ${response.status})`;
+                        throw new Error(`${data?.error ?? ""}${statusInfo}`.trim());
                       }
                       setJiraMessage("Conexão com o Jira confirmada.");
                     } catch (err) {
-                      setJiraError(
-                        err instanceof Error
-                          ? err.message
-                          : "Não foi possível testar a comunicação."
-                      );
+                      setJiraError(err instanceof Error ? err.message : "");
                     } finally {
                       setIsTestingJira(false);
                     }
