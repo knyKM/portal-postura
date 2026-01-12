@@ -30,10 +30,10 @@ export async function POST(request: Request) {
 
   const sanitizedUrl = url.replace(/\/+$/, "");
   const target = issueId
-    ? `${sanitizedUrl}/rest/api/3/issue/${encodeURIComponent(
+    ? `${sanitizedUrl}/rest/api/2/issue/${encodeURIComponent(
         issueId
       )}?fields=summary`
-    : `${sanitizedUrl}/rest/api/3/serverInfo`;
+    : `${sanitizedUrl}/rest/api/2/serverInfo`;
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
     const dispatcher = verifySsl
@@ -65,18 +65,11 @@ export async function POST(request: Request) {
         data = null;
       }
     }
-    const apiMessage =
-      (data?.errorMessages as string[] | undefined)?.[0] ||
-      (data?.error as string | undefined) ||
-      (data?.message as string | undefined) ||
-      raw ||
-      response.statusText ||
-      "";
     if (!response.ok) {
       return NextResponse.json(
         {
           status: response.status,
-          message: apiMessage,
+          message: raw,
         },
         { status: response.status }
       );
@@ -92,14 +85,14 @@ export async function POST(request: Request) {
         "";
       return NextResponse.json({
         status: response.status,
-        message: apiMessage,
+        message: raw,
         summary,
       });
     }
 
     return NextResponse.json({
       status: response.status,
-      message: apiMessage,
+      message: raw,
     });
   } finally {
     clearTimeout(timeout);
