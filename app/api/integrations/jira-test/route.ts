@@ -56,30 +56,50 @@ export async function POST(request: Request) {
       dispatcher,
     });
 
-    const data = await response.json().catch(() => null);
+    const raw = await response.text();
+    let data: Record<string, unknown> | null = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        data = null;
+      }
+    }
+    const apiMessage =
+      (data?.errorMessages as string[] | undefined)?.[0] ||
+      (data?.error as string | undefined) ||
+      (data?.message as string | undefined) ||
+      raw ||
+      response.statusText ||
+      "";
     if (!response.ok) {
-      const message =
-        data?.errorMessages?.[0] || data?.error || data?.message || "";
       return NextResponse.json(
         {
           status: response.status,
-          message,
+          message: apiMessage,
         },
         { status: response.status }
       );
     }
 
     if (issueId) {
+      const fields = (data?.fields ?? {}) as Record<string, unknown>;
+      const summary =
+        (fields.summary as string | undefined) ||
+        (fields.Summary as string | undefined) ||
+        (fields["Summary"] as string | undefined) ||
+        (data?.summary as string | undefined) ||
+        "";
       return NextResponse.json({
         status: response.status,
-        message: data?.message ?? response.statusText ?? "",
-        summary: data?.fields?.summary ?? data?.summary ?? "",
+        message: apiMessage,
+        summary,
       });
     }
 
     return NextResponse.json({
       status: response.status,
-      message: data?.message ?? response.statusText ?? "",
+      message: apiMessage,
     });
   } finally {
     clearTimeout(timeout);
