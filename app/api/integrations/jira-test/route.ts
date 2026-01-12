@@ -34,7 +34,9 @@ export async function POST(request: Request) {
         issueId
       )}?fields=summary`
     : `${sanitizedUrl}/rest/api/3/serverInfo`;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -70,14 +72,14 @@ export async function POST(request: Request) {
     if (issueId) {
       return NextResponse.json({
         status: response.status,
-        message: data?.message ?? "",
-        summary: data?.fields?.summary ?? "",
+        message: data?.message ?? response.statusText ?? "",
+        summary: data?.fields?.summary ?? data?.summary ?? "",
       });
     }
 
     return NextResponse.json({
       status: response.status,
-      message: data?.message ?? "",
+      message: data?.message ?? response.statusText ?? "",
     });
   } finally {
     clearTimeout(timeout);
