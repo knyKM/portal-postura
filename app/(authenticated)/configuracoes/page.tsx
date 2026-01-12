@@ -37,7 +37,18 @@ export default function ConfiguracoesPage() {
   const [loadingJiraToken, setLoadingJiraToken] = useState(true);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
-  const [isTestingJira, setIsTestingJira] = useState(false);
+  const [isJiraTestModalOpen, setIsJiraTestModalOpen] = useState(false);
+  const [jiraIssueId, setJiraIssueId] = useState("");
+  const [jiraTestResult, setJiraTestResult] = useState<{
+    status: number;
+    message: string;
+    summary?: string;
+  } | null>(null);
+  const [jiraTestError, setJiraTestError] = useState<{
+    status: number;
+    message: string;
+  } | null>(null);
+  const [isTestingIssue, setIsTestingIssue] = useState(false);
 
   // pega dados básicos do usuário só para exibir na tela
   useEffect(() => {
@@ -390,43 +401,12 @@ export default function ConfiguracoesPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={loadingJiraToken || isTestingJira}
+                  disabled={loadingJiraToken}
                   onClick={async () => {
-                    try {
-                      if (!jiraUrl.trim()) {
-                        setJiraError("Informe a URL do Jira antes de testar.");
-                        return;
-                      }
-                      setJiraError(null);
-                      setJiraMessage(null);
-                      setIsTestingJira(true);
-                      const response = await fetch(
-                        "/api/integrations/jira-test",
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            token: jiraToken,
-                            url: jiraUrl,
-                            verifySsl: jiraVerifySsl,
-                            maxResults: jiraMaxResults,
-                          }),
-                        }
-                      );
-                      const data = await response.json().catch(() => null);
-                      if (!response.ok) {
-                        const statusInfo =
-                          typeof data?.status === "number"
-                            ? ` (status ${data.status})`
-                            : ` (status ${response.status})`;
-                        throw new Error(`${data?.error ?? ""}${statusInfo}`.trim());
-                      }
-                      setJiraMessage("Conexão com o Jira confirmada.");
-                    } catch (err) {
-                      setJiraError(err instanceof Error ? err.message : "");
-                    } finally {
-                      setIsTestingJira(false);
-                    }
+                    setJiraTestResult(null);
+                    setJiraTestError(null);
+                    setJiraIssueId("");
+                    setIsJiraTestModalOpen(true);
                   }}
                   className={cn(
                     "rounded-xl",
@@ -435,7 +415,7 @@ export default function ConfiguracoesPage() {
                       : "border-slate-300 text-slate-700 hover:border-slate-400"
                   )}
                 >
-                  {isTestingJira ? "Testando..." : "Testar conexão"}
+                  Testar conexão
                 </Button>
                 <Button
                   type="button"
@@ -536,6 +516,119 @@ export default function ConfiguracoesPage() {
           </CardContent>
         </Card>
       </div>
+      {isJiraTestModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div
+            className={cn(
+              "w-full max-w-lg rounded-3xl border p-6",
+              isDark ? "border-zinc-800 bg-[#050816]" : "border-slate-200 bg-white"
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                  Integração Jira
+                </p>
+                <h3 className="text-xl font-semibold">Testar conexão</h3>
+                <p className="text-xs text-zinc-500">
+                  Informe uma issue para validar o acesso via API.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsJiraTestModalOpen(false)}
+              >
+                Fechar
+              </Button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">
+                  ID da issue
+                </label>
+                <Input
+                  value={jiraIssueId}
+                  onChange={(event) => setJiraIssueId(event.target.value)}
+                  placeholder="Ex: ASSETN-1234"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  disabled={!jiraIssueId.trim() || isTestingIssue}
+                  onClick={async () => {
+                    setIsTestingIssue(true);
+                    setJiraTestResult(null);
+                    setJiraTestError(null);
+                    try {
+                      const response = await fetch("/api/integrations/jira-test", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          token: jiraToken,
+                          url: jiraUrl,
+                          verifySsl: jiraVerifySsl,
+                          issueId: jiraIssueId.trim(),
+                        }),
+                      });
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        setJiraTestError({
+                          status: data?.status ?? response.status,
+                          message: data?.message ?? "",
+                        });
+                        return;
+                      }
+                      setJiraTestResult({
+                        status: data?.status ?? response.status,
+                        message: data?.message ?? "",
+                        summary: data?.summary ?? "",
+                      });
+                    } finally {
+                      setIsTestingIssue(false);
+                    }
+                  }}
+                  className="rounded-xl bg-indigo-600 text-white hover:bg-indigo-500"
+                >
+                  {isTestingIssue ? "Testando..." : "Testar conexão"}
+                </Button>
+              </div>
+
+              {jiraTestResult && (
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-3 text-xs",
+                    isDark
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  )}
+                >
+                  <p>Status: {jiraTestResult.status}</p>
+                  <p>Mensagem: {jiraTestResult.message}</p>
+                  {jiraTestResult.summary && <p>Summary: {jiraTestResult.summary}</p>}
+                </div>
+              )}
+
+              {jiraTestError && (
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-3 text-xs",
+                    isDark
+                      ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                      : "border-rose-200 bg-rose-50 text-rose-700"
+                  )}
+                >
+                  <p>Status: {jiraTestError.status}</p>
+                  <p>Mensagem: {jiraTestError.message}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardShell>
   );
 }

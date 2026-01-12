@@ -6,6 +6,7 @@ type JiraTestPayload = {
   url?: string;
   token?: string;
   verifySsl?: boolean;
+  issueId?: string;
 };
 
 export async function POST(request: Request) {
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
   const url = body?.url?.trim() ?? "";
   const token = body?.token?.trim() ?? "";
   const verifySsl = body?.verifySsl ?? true;
+  const issueId = body?.issueId?.trim() ?? "";
 
   if (!url) {
     return NextResponse.json(
@@ -27,7 +29,11 @@ export async function POST(request: Request) {
   }
 
   const sanitizedUrl = url.replace(/\/+$/, "");
-  const target = `${sanitizedUrl}/rest/api/3/serverInfo`;
+  const target = issueId
+    ? `${sanitizedUrl}/rest/api/3/issue/${encodeURIComponent(
+        issueId
+      )}?fields=summary`
+    : `${sanitizedUrl}/rest/api/3/serverInfo`;
   const headers: Record<string, string> = {};
 
   if (token) {
@@ -48,26 +54,31 @@ export async function POST(request: Request) {
       dispatcher,
     });
 
+    const data = await response.json().catch(() => null);
     if (!response.ok) {
+      const message =
+        data?.errorMessages?.[0] || data?.error || data?.message || "";
       return NextResponse.json(
         {
-          error: `Falha na comunicação com o Jira (status ${response.status}).`,
+          status: response.status,
+          message,
         },
-        { status: 400 }
+        { status: response.status }
       );
     }
 
-    return NextResponse.json({ status: "ok" });
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? `Não foi possível conectar ao Jira: ${err.message}`
-            : "Não foi possível conectar ao Jira.",
-      },
-      { status: 400 }
-    );
+    if (issueId) {
+      return NextResponse.json({
+        status: response.status,
+        message: data?.message ?? "",
+        summary: data?.fields?.summary ?? "",
+      });
+    }
+
+    return NextResponse.json({
+      status: response.status,
+      message: data?.message ?? "",
+    });
   } finally {
     clearTimeout(timeout);
   }
