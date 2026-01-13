@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ApprovalQueue } from "@/components/actions/approval-queue";
-import { ClipboardCheck, ShieldCheck, TimerReset, Users } from "lucide-react";
+import { ClipboardCheck, ShieldCheck, TimerReset, Users, Activity } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme/theme-provider";
 import { cn } from "@/lib/utils";
 
@@ -160,15 +161,31 @@ export default function FilaAprovacoesPage() {
                   </p>
                 </div>
               </div>
-              <div
-                className={cn(
-                  "rounded-2xl border px-4 py-3 text-xs font-semibold uppercase tracking-[0.3em]",
-                  isDark
-                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                )}
-              >
-                Auditoria ativa · 24/7
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn(
+                    "rounded-2xl text-xs font-semibold uppercase tracking-[0.2em]",
+                    isDark
+                      ? "border-white/10 text-zinc-200 hover:border-white/30"
+                      : "border-slate-200 text-slate-700 hover:border-slate-300"
+                  )}
+                  onClick={() => router.push("/fila-aprovacoes/executando")}
+                >
+                  <Activity className="mr-2 h-4 w-4" />
+                  Execuções em andamento
+                </Button>
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-3 text-xs font-semibold uppercase tracking-[0.3em]",
+                    isDark
+                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  )}
+                >
+                  Auditoria ativa · 24/7
+                </div>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">

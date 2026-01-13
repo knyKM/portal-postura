@@ -8,19 +8,23 @@ import {
   listRecentRequests,
   listCompletedRequests,
   listUserRequests,
+  deleteActionRequest,
   updateActionRequestStatus,
+  updateActionRequestExecutionStatus,
   ActionRequestRecord,
 } from "@/lib/actions/action-request-service";
 import { listAdmins } from "@/lib/auth/user-service";
 import { createNotification } from "@/lib/notifications/notification-service";
 import { getIntegrationSetting } from "@/lib/settings/integration-settings";
+import { createActionExecutionJob } from "@/lib/actions/action-job-service";
+import { startQueuedJobs } from "@/lib/actions/jira-action-runner";
 
 type ActionRequestPayload = {
   actionType?: string;
   filterMode?: string;
   filterValue?: string;
   requestedStatus?: string;
-  assignee?: string;
+  assigneeFields?: Array<{ id?: string; label?: string; value?: string; mode?: string }>;
   comment?: string;
   fields?: Array<{ key: string; value: string }>;
   projectKey?: string;
@@ -260,6 +264,7 @@ async function transitionIssue(
   }
 }
 
+
 function describeActionSummary(
   actionType: string,
   requestedStatus?: string | null,
@@ -271,8 +276,10 @@ function describeActionSummary(
         ? `${ACTION_LABELS.status} para ${requestedStatus}`
         : ACTION_LABELS.status;
     case "assignee":
-      return payload?.assignee
-        ? `${ACTION_LABELS.assignee} para ${payload.assignee}`
+      return payload?.customFields?.length
+        ? `${ACTION_LABELS.assignee} (${payload.customFields.length} campo${
+            payload.customFields.length > 1 ? "s" : ""
+          })`
         : ACTION_LABELS.assignee;
     case "comment":
       return ACTION_LABELS.comment;
@@ -346,7 +353,7 @@ function notifyRequesterDecision({
   approverName,
 }: {
   record: ActionRequestRecord;
-  decision: "approved" | "declined";
+  decision: "approved" | "declined" | "returned";
   approverName: string;
 }) {
   if (!record.requester_id) return;
@@ -362,9 +369,15 @@ function notifyRequesterDecision({
     title:
       decision === "approved"
         ? "Solicitação aprovada"
+        : decision === "returned"
+        ? "Solicitação devolvida"
         : "Solicitação declinada",
     message: `Sua solicitação #${record.id} para ${summary} foi ${
-      decision === "approved" ? "aprovada" : "declinada"
+      decision === "approved"
+        ? "aprovada"
+        : decision === "returned"
+        ? "devolvida"
+        : "declinada"
     } por ${approverName}.`,
     payload: buildNotificationPayload(record, record.action_type, record.requested_status ?? undefined, payload, {
       decision,
@@ -396,6 +409,7 @@ export async function GET(request: Request) {
       statusFilter === "pending" ||
       statusFilter === "approved" ||
       statusFilter === "declined" ||
+      statusFilter === "returned" ||
       statusFilter === "completed"
         ? statusFilter
         : undefined;
@@ -497,14 +511,15 @@ export async function POST(request: Request) {
     }
     nextRequestedStatus = requestedStatus;
   } else if (actionType === "assignee") {
-    const assignee = body?.assignee?.trim();
-    if (!assignee) {
-      return NextResponse.json(
-        { error: "Informe o novo responsável." },
-        { status: 400 }
-      );
-    }
-    payload = { assignee };
+    const customFields = (body?.assigneeFields ?? [])
+      .map((field) => ({
+        id: field?.id?.trim() ?? "",
+        label: field?.label?.trim() ?? "",
+        value: field?.value?.trim() ?? "",
+        mode: field?.mode?.trim() ?? "set",
+      }))
+      .filter((field) => field.id && (field.value || field.mode === "clear"));
+    payload = customFields.length ? { customFields } : null;
   } else if (actionType === "comment") {
     const comment = body?.comment?.trim();
     if (!comment) {
@@ -588,8 +603,9 @@ export async function POST(request: Request) {
 
 type UpdateRequestPayload = {
   id?: number;
-  decision?: "approve" | "decline";
+  decision?: "approve" | "decline" | "return";
   notes?: string;
+  action?: "delete";
 };
 
 export async function PATCH(request: Request) {
@@ -604,13 +620,28 @@ export async function PATCH(request: Request) {
   const body = (await request.json()) as UpdateRequestPayload | null;
   const id = body?.id;
   const decision = body?.decision;
+  const action = body?.action;
   const notes = body?.notes?.trim();
 
-  if (!id || (decision !== "approve" && decision !== "decline")) {
+  if (
+    !id ||
+    (!action && decision !== "approve" && decision !== "decline" && decision !== "return")
+  ) {
     return NextResponse.json(
       { error: "Requisição inválida." },
       { status: 400 }
     );
+  }
+
+  if (action === "delete") {
+    const deleted = deleteActionRequest(id);
+    if (!deleted) {
+      return NextResponse.json(
+        { error: "Solicitação não encontrada." },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ deleted: true });
   }
 
   if (!notes) {
@@ -636,93 +667,30 @@ export async function PATCH(request: Request) {
         { status: 400 }
       );
     }
-    const maxResultsSetting = Number(
-      getIntegrationSetting("jira_max_results") ?? DEFAULT_MAX_JIRA_RESULTS
-    );
-    const maxResultsLimit = Number.isFinite(maxResultsSetting)
-      ? Math.max(1, Math.floor(maxResultsSetting))
-      : DEFAULT_MAX_JIRA_RESULTS;
-    const targetStatus = targetRequest.requested_status?.trim();
-    if (!targetStatus) {
-      return NextResponse.json(
-        { error: "Status solicitado inválido." },
-        { status: 400 }
-      );
-    }
-
-    let issueKeys: string[] = [];
-    if (targetRequest.filter_mode === "ids") {
-      issueKeys = parseIssueIds(targetRequest.filter_value);
-    } else if (targetRequest.filter_mode === "jql") {
-      try {
-        const issues = await fetchIssuesByJql(
-          jiraConfig,
-          targetRequest.filter_value,
-          maxResultsLimit
-        );
-        issueKeys = issues.map((issue) => issue.key);
-      } catch (err) {
-        if (err instanceof JiraApiError) {
-          return NextResponse.json(
-            { error: err.message, status: err.status },
-            { status: err.status }
-          );
-        }
-        return NextResponse.json(
-          { error: "", status: 502 },
-          { status: 502 }
-        );
+    const isPaused = getIntegrationSetting("action_jobs_paused") === "true";
+    const job = createActionExecutionJob(targetRequest.id);
+    if (job?.id) {
+      updateActionRequestExecutionStatus({ id: targetRequest.id, status: "queued" });
+      if (!isPaused) {
+        setTimeout(() => {
+          void startQueuedJobs();
+        }, 0);
       }
-    } else {
-      return NextResponse.json(
-        { error: "Filtro inválido para alteração de status." },
-        { status: 400 }
-      );
-    }
-
-    if (!issueKeys.length) {
-      return NextResponse.json(
-        { error: "Nenhuma issue encontrada para processar." },
-        { status: 400 }
-      );
-    }
-
-    const failures: Array<{ issueKey: string; status: number; message: string }> =
-      [];
-    for (const key of issueKeys) {
-      try {
-        await transitionIssue(jiraConfig, key, targetStatus);
-      } catch (err) {
-        if (err instanceof JiraApiError) {
-          failures.push({
-            issueKey: key,
-            status: err.status,
-            message: err.message,
-          });
-        } else {
-          failures.push({
-            issueKey: key,
-            status: 502,
-            message: "",
-          });
-        }
-      }
-    }
-
-    if (failures.length) {
-      const primaryFailure = failures[0];
-      return NextResponse.json(
-        {
-          error: primaryFailure.message,
-          status: primaryFailure.status,
-          failures: failures.slice(0, 5),
-        },
-        { status: primaryFailure.status }
-      );
     }
   }
 
-  const newStatus = decision === "approve" ? "approved" : "declined";
+  const decisionStatus =
+    decision === "approve"
+      ? "approved"
+      : decision === "return"
+      ? "returned"
+      : "declined";
+  const newStatus =
+    decision === "approve"
+      ? "queued"
+      : decision === "return"
+      ? "returned"
+      : "declined";
   const updated = updateActionRequestStatus({
     id,
     status: newStatus,
@@ -739,7 +707,7 @@ export async function PATCH(request: Request) {
 
   notifyRequesterDecision({
     record: updated,
-    decision: newStatus,
+    decision: decisionStatus,
     approverName: session.name,
   });
 

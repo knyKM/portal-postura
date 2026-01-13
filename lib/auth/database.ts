@@ -103,6 +103,7 @@ db.exec(`
   );
 `);
 
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +129,40 @@ db.exec(`
     value TEXT
   );
 `);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS action_execution_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    error_message TEXT,
+    total_issues INTEGER,
+    processed_issues INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    finished_at TEXT,
+    FOREIGN KEY(request_id) REFERENCES action_requests(id)
+  );
+`);
+
+const actionJobTableInfo = db
+  .prepare("PRAGMA table_info(action_execution_jobs)")
+  .all() as TableInfoRow[];
+
+const hasTotalIssuesColumn = actionJobTableInfo.some(
+  (column) => column.name === "total_issues"
+);
+const hasProcessedIssuesColumn = actionJobTableInfo.some(
+  (column) => column.name === "processed_issues"
+);
+
+if (!hasTotalIssuesColumn) {
+  db.exec("ALTER TABLE action_execution_jobs ADD COLUMN total_issues INTEGER");
+}
+
+if (!hasProcessedIssuesColumn) {
+  db.exec("ALTER TABLE action_execution_jobs ADD COLUMN processed_issues INTEGER");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS security_levels (

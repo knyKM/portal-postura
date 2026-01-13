@@ -87,14 +87,14 @@ type UserActionRequest = {
   filter_value: string;
   requested_status: string | null;
   payload: {
-    assignee?: string;
+    customFields?: Array<{ id: string; label?: string; value?: string; mode?: string }>;
     comment?: string;
     fields?: Array<{ key: string; value: string }>;
     projectKey?: string;
     csvData?: string;
     csvFileName?: string;
   } | null;
-  status: "pending" | "approved" | "declined";
+  status: "pending" | "approved" | "declined" | "returned";
   audit_notes?: string | null;
   created_at: string;
   approved_at: string | null;
@@ -107,7 +107,23 @@ export default function AcoesPage() {
   const [filterMode, setFilterMode] = useState<"jql" | "ids">("jql");
   const [filterValue, setFilterValue] = useState("");
   const [statusValue, setStatusValue] = useState(statusOptions[0]);
-  const [assignee, setAssignee] = useState("");
+  const assigneeCustomFields = [
+    { id: "customfield_11702", label: "Área Proprietária Ativo Diretor_LB" },
+    { id: "customfield_11704", label: "Área Proprietária Ativo Ponto Focal_LB" },
+    { id: "customfield_11703", label: "Área Proprietária Ativo Gerente Sr_LB" },
+    { id: "customfield_11706", label: "Área Solucionadora Responsável Gerente Sr_LB" },
+    { id: "customfield_11705", label: "Área Solucionadora Responsável Diretor_LB" },
+    { id: "customfield_11707", label: "Área Solucionadora Responsável Ponto Focal_LB" },
+    { id: "customfield_10663", label: "Área Solucionadora Responsável VP" },
+    { id: "customfield_10647", label: "Área Negócio Responsável VP" },
+    { id: "customfield_13200", label: "Owner de Desenvolvimento" },
+    { id: "customfield_13202", label: "Owner de Operação" },
+    { id: "customfield_13205", label: "Owner de Sustentação" },
+    { id: "customfield_12301", label: "Owner de Negócio" },
+  ];
+  const [assigneeFields, setAssigneeFields] = useState(
+    assigneeCustomFields.map((field) => ({ ...field, value: "" }))
+  );
   const [comment, setComment] = useState("");
   const [fields, setFields] = useState<Array<{ key: string; value: string }>>([
     { key: "", value: "" },
@@ -123,7 +139,24 @@ export default function AcoesPage() {
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
   const [requestsError, setRequestsError] = useState<string | null>(null);
   const [requestsRefreshKey, setRequestsRefreshKey] = useState(0);
-  const [historyCollapsed, setHistoryCollapsed] = useState(true);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editSelectedAction, setEditSelectedAction] = useState<string | null>(null);
+  const [editFilterMode, setEditFilterMode] = useState<"jql" | "ids">("jql");
+  const [editFilterValue, setEditFilterValue] = useState("");
+  const [editStatusValue, setEditStatusValue] = useState(statusOptions[0]);
+  const [editAssigneeFields, setEditAssigneeFields] = useState(
+    assigneeCustomFields.map((field) => ({ ...field, value: "" }))
+  );
+  const [editComment, setEditComment] = useState("");
+  const [editFields, setEditFields] = useState<Array<{ key: string; value: string }>>([
+    { key: "", value: "" },
+  ]);
+  const [editProjectKey, setEditProjectKey] = useState(projectOptions[0].value);
+  const [editIssuesCount, setEditIssuesCount] = useState<number | null>(null);
+  const [editIsCheckingCount, setEditIsCheckingCount] = useState(false);
+  const [editIdsFileName, setEditIdsFileName] = useState<string | null>(null);
   const cardClasses = cn(
     "rounded-3xl border",
     isDark ? "border-zinc-800 bg-[#050816]/80" : "border-slate-200 bg-white"
@@ -202,36 +235,53 @@ export default function AcoesPage() {
     }
   }
 
-  async function handleSubmit() {
-    if (!selectedAction) {
+  async function submitAction({
+    requestId,
+    actionType,
+    filterModeValue,
+    filterValueValue,
+    statusValueValue,
+    assigneeFieldsValue,
+    commentValue,
+    fieldsValue,
+    projectValue,
+    idsFileNameValue,
+  }: {
+    requestId?: number | null;
+    actionType: string | null;
+    filterModeValue: "jql" | "ids";
+    filterValueValue: string;
+    statusValueValue: string;
+    assigneeFieldsValue: Array<{ id: string; label: string; value: string }>;
+    commentValue: string;
+    fieldsValue: Array<{ key: string; value: string }>;
+    projectValue: string;
+    idsFileNameValue: string | null;
+  }) {
+    if (!actionType) {
       setError("Selecione uma ação antes de continuar.");
       return;
     }
 
-    const isEscalate = selectedAction === "escalate";
+    const isEscalate = actionType === "escalate";
 
-    if (!isEscalate && !filterValue.trim()) {
+    if (!isEscalate && !filterValueValue.trim()) {
       setError("Informe a JQL ou os IDs antes de enviar.");
       return;
     }
 
-    if (selectedAction === "assignee" && !assignee.trim()) {
-      setError("Informe o novo responsável.");
-      return;
-    }
-
-    if (selectedAction === "assignee") {
-      if (filterMode === "jql") {
-        const normalized = normalizeAssigneeJql(filterValue);
+    if (actionType === "assignee") {
+      if (filterModeValue === "jql") {
+        const normalized = normalizeAssigneeJql(filterValueValue);
         if (!/^project\s*=\s*assetn\b/i.test(normalized)) {
           setError("A JQL deve iniciar com project = ASSETN.");
           return;
         }
-        if (normalized !== filterValue) {
+        if (normalized !== filterValueValue && !requestId) {
           setFilterValue(normalized);
         }
       } else {
-        const ids = parseIssueIds(filterValue);
+        const ids = parseIssueIds(filterValueValue);
         if (!ids.length) {
           setError("Informe os IDs antes de enviar.");
           return;
@@ -244,17 +294,35 @@ export default function AcoesPage() {
       }
     }
 
-    if (selectedAction === "comment" && !comment.trim()) {
+    if (actionType === "comment" && !commentValue.trim()) {
       setError("Digite o comentário que será replicado.");
       return;
     }
 
-    const normalizedFields = fields.map((field) => ({
+    const normalizedAssigneeFields = assigneeFieldsValue
+      .map((field) => ({
+        id: field.id,
+        label: field.label,
+        value: field.value.trim(),
+      }))
+      .filter((field) => field.value);
+
+    const assigneePayload =
+      actionType === "assignee"
+        ? normalizedAssigneeFields.map((field) => ({
+            id: field.id,
+            label: field.label,
+            value: field.value === "<limpar>" ? "" : field.value,
+            mode: field.value === "<limpar>" ? "clear" : "set",
+          }))
+        : [];
+
+    const normalizedFields = fieldsValue.map((field) => ({
       key: field.key.trim(),
       value: field.value.trim(),
     }));
 
-    if (selectedAction === "fields") {
+    if (actionType === "fields") {
       const hasEmptyFields = normalizedFields.some(
         (field) => !field.key || !field.value
       );
@@ -265,13 +333,13 @@ export default function AcoesPage() {
     }
 
     const cleanedFields =
-      selectedAction === "fields" || isEscalate
+      actionType === "fields" || isEscalate
         ? normalizedFields.filter((field) => field.key && field.value)
         : [];
 
     if (isEscalate) {
-      const csvData = filterValue.trim();
-      if (!projectKey) {
+      const csvData = filterValueValue.trim();
+      if (!projectValue) {
         setError("Selecione o projeto destino antes de continuar.");
         return;
       }
@@ -286,36 +354,43 @@ export default function AcoesPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/actions/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actionType: selectedAction,
-          filterMode: isEscalate ? "project" : filterMode,
-          filterValue: isEscalate ? projectKey : filterValue.trim(),
-          requestedStatus: selectedAction === "status" ? statusValue : undefined,
-          assignee: selectedAction === "assignee" ? assignee.trim() : undefined,
-          comment: selectedAction === "comment" ? comment.trim() : undefined,
-          fields:
-            selectedAction === "fields" || isEscalate ? cleanedFields : undefined,
-          projectKey: isEscalate ? projectKey : undefined,
-          csvData: isEscalate ? filterValue.trim() || undefined : undefined,
-          csvFileName: isEscalate ? idsFileName ?? undefined : undefined,
-        }),
-      });
+      const payload = {
+        actionType,
+        filterMode: isEscalate ? "project" : filterModeValue,
+        filterValue: isEscalate ? projectValue : filterValueValue.trim(),
+        requestedStatus: actionType === "status" ? statusValueValue : undefined,
+        assigneeFields: actionType === "assignee" ? assigneePayload : undefined,
+        comment: actionType === "comment" ? commentValue.trim() : undefined,
+        fields: actionType === "fields" || isEscalate ? cleanedFields : undefined,
+        projectKey: isEscalate ? projectValue : undefined,
+        csvData: isEscalate ? filterValueValue.trim() || undefined : undefined,
+        csvFileName: isEscalate ? idsFileNameValue ?? undefined : undefined,
+      };
+      const response = await fetch(
+        requestId ? `/api/actions/requests/${requestId}` : "/api/actions/requests",
+        {
+          method: requestId ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(data?.error || "Falha ao registrar a ação.");
       }
       setMessage(
-        "Solicitação enviada para aprovação do administrador. Você será notificado após a revisão."
+        requestId
+          ? "Solicitação reenviada para aprovação do administrador."
+          : "Solicitação enviada para aprovação do administrador. Você será notificado após a revisão."
       );
       setFilterValue("");
       setIssuesCount(null);
-      setAssignee("");
+      setAssigneeFields(assigneeCustomFields.map((field) => ({ ...field, value: "" })));
       setComment("");
       setFields([{ key: "", value: "" }]);
       setIdsFileName(null);
+      setEditingRequestId(null);
+      setIsEditModalOpen(false);
       triggerRequestsRefresh();
     } catch (err) {
       setError(
@@ -324,6 +399,39 @@ export default function AcoesPage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleSubmit() {
+    setIsSubmitting(true);
+    await submitAction({
+      requestId: null,
+      actionType: selectedAction,
+      filterModeValue: filterMode,
+      filterValueValue: filterValue,
+      statusValueValue: statusValue,
+      assigneeFieldsValue: assigneeFields,
+      commentValue: comment,
+      fieldsValue: fields,
+      projectValue: projectKey,
+      idsFileNameValue: idsFileName,
+    });
+  }
+
+  async function handleEditSubmit() {
+    if (!editingRequestId) return;
+    setIsSubmitting(true);
+    await submitAction({
+      requestId: editingRequestId,
+      actionType: editSelectedAction,
+      filterModeValue: editFilterMode,
+      filterValueValue: editFilterValue,
+      statusValueValue: editStatusValue,
+      assigneeFieldsValue: editAssigneeFields,
+      commentValue: editComment,
+      fieldsValue: editFields,
+      projectValue: editProjectKey,
+      idsFileNameValue: editIdsFileName,
+    });
   }
 
   async function handleSimulateCount() {
@@ -387,12 +495,47 @@ export default function AcoesPage() {
             ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
             : "border-emerald-200 bg-emerald-50 text-emerald-700",
         };
+      case "queued":
+        return {
+          label: "Em fila",
+          className: isDark
+            ? "border-sky-500/50 bg-sky-500/10 text-sky-200"
+            : "border-sky-200 bg-sky-50 text-sky-700",
+        };
+      case "running":
+        return {
+          label: "Executando",
+          className: isDark
+            ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+            : "border-amber-200 bg-amber-50 text-amber-700",
+        };
+      case "completed":
+        return {
+          label: "Execução concluída",
+          className: isDark
+            ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+            : "border-emerald-200 bg-emerald-50 text-emerald-700",
+        };
+      case "failed":
+        return {
+          label: "Erro",
+          className: isDark
+            ? "border-rose-500/50 bg-rose-500/10 text-rose-300"
+            : "border-rose-200 bg-rose-50 text-rose-700",
+        };
       case "declined":
         return {
           label: "Declinado",
           className: isDark
             ? "border-rose-500/50 bg-rose-500/10 text-rose-300"
             : "border-rose-200 bg-rose-50 text-rose-700",
+        };
+      case "returned":
+        return {
+          label: "Devolvido",
+          className: isDark
+            ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+            : "border-amber-200 bg-amber-50 text-amber-700",
         };
       default:
         return {
@@ -409,8 +552,10 @@ export default function AcoesPage() {
       case "status":
         return `Alterar status para ${request.requested_status ?? "-"}.`;
       case "assignee":
-        return request.payload?.assignee
-          ? `Mudar responsável para ${request.payload.assignee}.`
+        return request.payload?.customFields?.length
+          ? `Mudar responsável (${request.payload.customFields.length} campo${
+              request.payload.customFields.length > 1 ? "s" : ""
+            }).`
           : "Mudar responsável.";
       case "comment": {
         const commentText = request.payload?.comment ?? "";
@@ -465,6 +610,132 @@ export default function AcoesPage() {
       pageSubtitle="Automação de incidentes e integrações Jira"
     >
       <div className="flex w-full flex-col gap-6 px-4 lg:px-10">
+        {isEditModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div
+              className={cn(
+                "w-full max-w-5xl rounded-3xl border p-6",
+                isDark ? "border-zinc-800 bg-[#050816]" : "border-slate-200 bg-white"
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                    Editar solicitação
+                  </p>
+                  <h3 className="text-xl font-semibold">
+                    Ajuste os parâmetros antes de reenviar
+                  </h3>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingRequestId(null);
+                  }}
+                >
+                  Fechar
+                </Button>
+              </div>
+              <div className="mt-4">
+                <ActionForm
+                  selectedAction={editSelectedAction}
+                  filterMode={editFilterMode}
+                  filterValue={editFilterValue}
+                  projectValue={editProjectKey}
+                  statusValue={editStatusValue}
+                  assigneeFields={editAssigneeFields}
+                  comment={editComment}
+                  fields={editFields}
+                  issuesCount={editIssuesCount}
+                  isCheckingCount={editIsCheckingCount}
+                  isSubmitting={isSubmitting}
+                  error={error}
+                  message={message}
+                  onFilterModeChange={(mode) => {
+                    setEditFilterMode(mode);
+                    setEditFilterValue("");
+                    setEditIssuesCount(null);
+                    if (mode !== "ids") {
+                      setEditIdsFileName(null);
+                    }
+                  }}
+                  onFilterValueChange={(value) => {
+                    setEditFilterValue(value);
+                    setEditIssuesCount(null);
+                  }}
+                  onProjectChange={(value) => setEditProjectKey(value)}
+                  onStatusChange={(value) => setEditStatusValue(value)}
+                  onAssigneeFieldChange={(id, value) =>
+                    setEditAssigneeFields((prev) =>
+                      prev.map((field) =>
+                        field.id === id ? { ...field, value } : field
+                      )
+                    )
+                  }
+                  onCommentChange={(value) => setEditComment(value)}
+                  onFieldKeyChange={(index, value) =>
+                    setEditFields((prev) =>
+                      prev.map((field, fieldIndex) =>
+                        fieldIndex === index ? { ...field, key: value } : field
+                      )
+                    )
+                  }
+                  onFieldValueChange={(index, value) =>
+                    setEditFields((prev) =>
+                      prev.map((field, fieldIndex) =>
+                        fieldIndex === index ? { ...field, value } : field
+                      )
+                    )
+                  }
+                  onAddField={() =>
+                    setEditFields((prev) => [...prev, { key: "", value: "" }])
+                  }
+                  onRemoveField={(index) =>
+                    setEditFields((prev) =>
+                      prev.length === 1
+                        ? prev
+                        : prev.filter((_, fieldIndex) => fieldIndex !== index)
+                    )
+                  }
+                  onPrefillFieldKey={(fieldKey) =>
+                    setEditFields((prev) => {
+                      const targetIndex = prev.findIndex((field) => !field.key.trim());
+                      if (targetIndex !== -1) {
+                        return prev.map((field, index) =>
+                          index === targetIndex ? { ...field, key: fieldKey } : field
+                        );
+                      }
+                      return [...prev, { key: fieldKey, value: "" }];
+                    })
+                  }
+                  onSimulateCount={async () => {
+                    if (editFilterMode !== "jql" || !editFilterValue.trim()) {
+                      return;
+                    }
+                    setEditIsCheckingCount(true);
+                    await new Promise((resolve) => setTimeout(resolve, 700));
+                    const fakeNumber = 42 + Math.floor(Math.random() * 80);
+                    setEditIssuesCount(fakeNumber);
+                    setEditIsCheckingCount(false);
+                  }}
+                  onSubmit={handleEditSubmit}
+                  onImportIdsFromFile={(content, fileName) => {
+                    setEditFilterMode("ids");
+                    setEditFilterValue(content.trim());
+                    setEditIdsFileName(fileName);
+                    setEditIssuesCount(null);
+                  }}
+                  uploadedFileName={editIdsFileName}
+                  projectOptions={projectOptions}
+                  csvTemplateUrl="/templates/escalate-template.csv"
+                  idsTemplateUrl="/templates/action-ids-template.csv"
+                />
+              </div>
+            </div>
+          </div>
+        )}
         <div
           className={cn(
             "relative overflow-hidden rounded-3xl border px-6 py-6",
@@ -548,13 +819,13 @@ export default function AcoesPage() {
           </div>
         </div>
 
-        <ActionForm
+          <ActionForm
           selectedAction={selectedAction}
           filterMode={filterMode}
           filterValue={filterValue}
           projectValue={projectKey}
           statusValue={statusValue}
-          assignee={assignee}
+          assigneeFields={assigneeFields}
           comment={comment}
           fields={fields}
           issuesCount={issuesCount}
@@ -573,7 +844,13 @@ export default function AcoesPage() {
           }}
           onProjectChange={(value) => setProjectKey(value)}
           onStatusChange={(value) => setStatusValue(value)}
-          onAssigneeChange={(value) => setAssignee(value)}
+          onAssigneeFieldChange={(id, value) =>
+            setAssigneeFields((prev) =>
+              prev.map((field) =>
+                field.id === id ? { ...field, value } : field
+              )
+            )
+          }
           onCommentChange={(value) => setComment(value)}
           onFieldKeyChange={(index, value) =>
             setFields((prev) =>
@@ -721,6 +998,51 @@ export default function AcoesPage() {
                           >
                             {statusInfo.label}
                           </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {request.status === "returned" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl text-xs"
+                              onClick={() => {
+                                setEditingRequestId(request.id);
+                                setEditSelectedAction(request.action_type);
+                                setEditFilterMode(
+                                  request.filter_mode === "ids" ? "ids" : "jql"
+                                );
+                                setEditFilterValue(request.filter_value ?? "");
+                                setEditStatusValue(
+                                  request.requested_status ?? statusOptions[0]
+                                );
+                                setEditAssigneeFields(
+                                  assigneeCustomFields.map((field) => {
+                                    const match = request.payload?.customFields?.find(
+                                      (item) => item.id === field.id
+                                    );
+                                    const value =
+                                      match?.mode === "clear"
+                                        ? "<limpar>"
+                                        : (match?.value ?? "");
+                                    return { ...field, value };
+                                  })
+                                );
+                                setEditComment(request.payload?.comment ?? "");
+                                setEditFields(
+                                  request.payload?.fields?.length
+                                    ? request.payload.fields
+                                    : [{ key: "", value: "" }]
+                                );
+                                setEditProjectKey(request.payload?.projectKey ?? projectKey);
+                                setEditIssuesCount(null);
+                                setEditIdsFileName(null);
+                                setIsEditModalOpen(true);
+                              }}
+                            >
+                              Editar e reenviar
+                            </Button>
+                          )}
                         </div>
                         <div
                           className={cn(

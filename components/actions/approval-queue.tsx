@@ -16,7 +16,7 @@ import { useTheme } from "@/components/theme/theme-provider";
 type ActionField = { key: string; value: string };
 
 type ActionPayload = {
-  assignee?: string;
+  customFields?: Array<{ id?: string; label?: string; value?: string; mode?: string }>;
   comment?: string;
   fields?: ActionField[];
   projectKey?: string;
@@ -48,6 +48,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [requests, setRequests] = useState(pending);
+  const [completedRequests, setCompletedRequests] = useState(completed);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [notesById, setNotesById] = useState<Record<number, string>>({});
@@ -86,6 +87,10 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
   }, [pending]);
 
   useEffect(() => {
+    setCompletedRequests(completed);
+  }, [completed]);
+
+  useEffect(() => {
     if (!focusRequestId) return;
     setHighlightedId(focusRequestId);
     const element = document.getElementById(`request-${focusRequestId}`);
@@ -96,7 +101,10 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
     return () => window.clearTimeout(timeout);
   }, [focusRequestId]);
 
-  async function handleDecision(id: number, decision: "approve" | "decline") {
+  async function handleDecision(
+    id: number,
+    decision: "approve" | "decline" | "return"
+  ) {
     const noteValue = (notesById[id] ?? "").trim();
     if (!noteValue) {
       setNoteErrors((prev) => ({
@@ -161,17 +169,40 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
             </p>
           </div>
         );
-      case "assignee":
+      case "assignee": {
+        const customFields = request.payload?.customFields ?? [];
         return (
           <div className={shellClass}>
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-              Novo responsável
+              Campos de responsável
             </p>
-            <p className="mt-2 text-lg font-semibold">
-              {request.payload?.assignee ?? "-"}
-            </p>
+            {customFields.length === 0 ? (
+              <p className="mt-2 text-sm">Nenhuma alteração informada.</p>
+            ) : (
+              <div className="mt-2 space-y-2 text-sm">
+                {customFields.map((field: { id?: string; label?: string; value?: string; mode?: string }) => (
+                  <div
+                    key={`${field.id}-${field.label}`}
+                    className={cn(
+                      "flex items-center justify-between rounded-xl border px-3 py-2 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/20 text-white"
+                        : "border-slate-200 bg-white text-slate-900"
+                    )}
+                  >
+                    <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                      {field.label ?? field.id ?? "-"}
+                    </span>
+                    <span className="font-semibold">
+                      {field.mode === "clear" ? "<limpar>" : field.value || "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
+      }
       case "comment":
         return (
           <div className={shellClass}>
@@ -333,7 +364,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
       case "status":
         return `Status alvo: ${request.requested_status ?? "-"}`;
       case "assignee":
-        return `Novo responsável: ${request.payload?.assignee ?? "-"}`;
+        return `Campos de responsável: ${request.payload?.customFields?.length ?? 0}`;
       case "comment":
         if (!request.payload?.comment) return "Comentário registrado.";
         return request.payload.comment.length > 60
@@ -479,6 +510,17 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                           processingId === request.id && "opacity-60"
                         )}
                         disabled={processingId === request.id}
+                        onClick={() => handleDecision(request.id, "return")}
+                      >
+                        Devolver
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "rounded-2xl border-white/20 text-xs font-semibold",
+                          processingId === request.id && "opacity-60"
+                        )}
+                        disabled={processingId === request.id}
                         onClick={() => handleDecision(request.id, "decline")}
                       >
                         Declinar
@@ -508,20 +550,20 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
             Histórico recente
           </CardTitle>
           <CardDescription className={cn("text-sm", mutedText)}>
-            Tudo que já foi aprovado ou declinado fica registrado com justificativa.
+            Tudo que já foi aprovado, declinado ou devolvido fica registrado com justificativa.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {completed.length === 0 ? (
+          {completedRequests.length === 0 ? (
             <p className={cn("rounded-3xl border px-4 py-6 text-center text-sm", isDark ? "border-white/5 text-zinc-400" : "border-slate-200 text-slate-600")}>
               Nenhuma ação concluída recentemente.
             </p>
           ) : (
-            completed.map((request) => (
+            completedRequests.map((request) => (
               <article
                 key={request.id}
                 className={cn(
-                  "rounded-3xl border px-5 py-4",
+                  "relative rounded-3xl border px-5 py-4",
                   isDark ? "border-white/5 bg-white/5 text-white" : "border-slate-200 bg-white text-slate-900"
                 )}
               >
@@ -537,16 +579,54 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                       · {getHistoryDescription(request)}
                     </p>
                   </div>
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em]",
-                      request.status === "approved"
-                        ? "bg-emerald-500/10 text-emerald-300"
-                        : "bg-rose-500/10 text-rose-300"
-                    )}
-                  >
-                    {request.status === "approved" ? "Aprovado" : "Declinado"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em]",
+                        request.status === "completed"
+                          ? "bg-emerald-500/10 text-emerald-300"
+                          : request.status === "failed"
+                          ? "bg-rose-500/10 text-rose-300"
+                          : request.status === "returned"
+                          ? "bg-amber-500/10 text-amber-300"
+                          : "bg-slate-500/10 text-slate-300"
+                      )}
+                    >
+                      {request.status === "completed"
+                        ? "Execução concluída"
+                        : request.status === "failed"
+                        ? "Erro"
+                        : request.status === "returned"
+                        ? "Devolvido"
+                        : "Declinado"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="relative z-10 rounded-xl text-[11px]"
+                      onClick={async () => {
+                        try {
+                          const response = await fetch("/api/actions/requests", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ id: request.id, action: "delete" }),
+                          });
+                          const data = await response.json().catch(() => null);
+                          if (!response.ok) {
+                            throw new Error(data?.error || "");
+                          }
+                          setCompletedRequests((prev) =>
+                            prev.filter((item) => item.id !== request.id)
+                          );
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : "");
+                        }
+                      }}
+                    >
+                      Excluir
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">

@@ -36,7 +36,7 @@ type ActionFormProps = {
   filterValue: string;
   projectValue: string;
   statusValue: string;
-  assignee: string;
+  assigneeFields: Array<{ id: string; label: string; value: string }>;
   comment: string;
   fields: Array<{ key: string; value: string }>;
   issuesCount: number | null;
@@ -48,7 +48,7 @@ type ActionFormProps = {
   onFilterValueChange: (value: string) => void;
   onProjectChange: (value: string) => void;
   onStatusChange: (value: string) => void;
-  onAssigneeChange: (value: string) => void;
+  onAssigneeFieldChange: (id: string, value: string) => void;
   onCommentChange: (value: string) => void;
   onFieldKeyChange: (index: number, value: string) => void;
   onFieldValueChange: (index: number, value: string) => void;
@@ -90,7 +90,7 @@ export function ActionForm(props: ActionFormProps) {
     filterValue,
     projectValue,
     statusValue,
-    assignee,
+    assigneeFields,
     comment,
     fields,
     issuesCount,
@@ -102,7 +102,7 @@ export function ActionForm(props: ActionFormProps) {
     onFilterValueChange,
     onProjectChange,
     onStatusChange,
-    onAssigneeChange,
+    onAssigneeFieldChange,
     onCommentChange,
     onFieldKeyChange,
     onFieldValueChange,
@@ -368,6 +368,15 @@ export function ActionForm(props: ActionFormProps) {
                   value={field.key}
                   onChange={(event) => onFieldKeyChange(index, event.target.value)}
                 />
+                {(() => {
+                  const match = fieldCatalog.find((item) => item.id === field.key);
+                  if (!match) return null;
+                  return (
+                    <p className={cn("mt-1 text-[11px]", subtleText)}>
+                      {match.name}
+                    </p>
+                  );
+                })()}
               </FieldBlock>
               <FieldBlock label="Valor" labelClassName={labelColor}>
                 <Input
@@ -440,16 +449,121 @@ export function ActionForm(props: ActionFormProps) {
       case "assignee":
         return (
           <>
-            <FieldBlock label="Novo responsável" labelClassName={labelColor}>
-              <Input
-                placeholder="E-mail ou accountId"
-                value={assignee}
-                onChange={(event) => onAssigneeChange(event.target.value)}
-                className={inputClasses}
-              />
-            </FieldBlock>
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div
+                  className={cn(
+                    "rounded-2xl border p-4",
+                    isDark
+                      ? "border-white/10 bg-white/5"
+                      : "border-slate-200 bg-slate-50"
+                  )}
+                >
+                  <p className={cn("text-xs font-semibold uppercase tracking-[0.3em]", labelColor)}>
+                    Área Proprietária
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    {assigneeFields
+                      .filter((field) => field.id.startsWith("customfield_1170"))
+                      .map((field) => (
+                        <FieldBlock
+                          key={field.id}
+                          label={field.label}
+                          labelClassName={labelColor}
+                        >
+                          <Input
+                            placeholder="Nome ou <limpar>"
+                            value={field.value}
+                            onChange={(event) =>
+                              onAssigneeFieldChange(field.id, event.target.value)
+                            }
+                            className={inputClasses}
+                          />
+                        </FieldBlock>
+                      ))}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "rounded-2xl border p-4",
+                    isDark
+                      ? "border-white/10 bg-white/5"
+                      : "border-slate-200 bg-slate-50"
+                  )}
+                >
+                  <p className={cn("text-xs font-semibold uppercase tracking-[0.3em]", labelColor)}>
+                    Área Solucionadora
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    {assigneeFields
+                      .filter((field) =>
+                        ["customfield_11705", "customfield_11706", "customfield_11707", "customfield_10663"].includes(field.id)
+                      )
+                      .map((field) => (
+                        <FieldBlock
+                          key={field.id}
+                          label={field.label}
+                          labelClassName={labelColor}
+                        >
+                          <Input
+                            placeholder="Nome ou <limpar>"
+                            value={field.value}
+                            onChange={(event) =>
+                              onAssigneeFieldChange(field.id, event.target.value)
+                            }
+                            className={inputClasses}
+                          />
+                        </FieldBlock>
+                      ))}
+                  </div>
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "rounded-2xl border p-4",
+                  isDark
+                    ? "border-white/10 bg-white/5"
+                    : "border-slate-200 bg-slate-50"
+                )}
+              >
+                <p className={cn("text-xs font-semibold uppercase tracking-[0.3em]", labelColor)}>
+                  Owners e Negócio
+                </p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {assigneeFields
+                    .filter((field) =>
+                      [
+                        "customfield_10647",
+                        "customfield_13200",
+                        "customfield_13202",
+                        "customfield_13205",
+                        "customfield_12301",
+                      ].includes(field.id)
+                    )
+                    .map((field) => (
+                      <FieldBlock
+                        key={field.id}
+                        label={field.label}
+                        labelClassName={labelColor}
+                      >
+                        <Input
+                          placeholder="Nome ou <limpar>"
+                          value={field.value}
+                          onChange={(event) =>
+                            onAssigneeFieldChange(field.id, event.target.value)
+                          }
+                          className={inputClasses}
+                        />
+                      </FieldBlock>
+                    ))}
+                </div>
+              </div>
+            </div>
             <p className={cn("text-[11px]", subtleText)}>
               Apenas issues do projeto ASSETN podem ser reatribuídas por aqui.
+            </p>
+            <p className={cn("text-[11px]", subtleText)}>
+              Deixe vazio para não alterar o campo. Use &lt;limpar&gt; para limpar a informação.
             </p>
             <p className={cn("text-[11px]", subtleText)}>
               Quando integrado ao Jira, a automação verificará se o usuário tem permissão no projeto antes de aplicar.
