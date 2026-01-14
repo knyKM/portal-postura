@@ -460,7 +460,7 @@ export async function GET(request: Request) {
 
   if (statusFilter === "open") {
     const openRequests = listActionRequestsByStatuses(
-      ["pending", "returned", "queued", "running", "approved"],
+      ["pending", "returned", "queued", "running"],
       limit
     );
     return NextResponse.json({

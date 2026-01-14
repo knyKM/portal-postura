@@ -1157,7 +1157,7 @@ export default function AcoesPage() {
                             >
                               #{request.id} ·{" "}
                               {new Date(request.created_at).toLocaleString("pt-BR", {
-                                timeZone: "America/Sao_Paulo",
+                                
                               })}
                             </p>
                           </div>
@@ -1404,7 +1404,7 @@ export default function AcoesPage() {
                               >
                                 #{request.id} ·{" "}
                                 {new Date(request.created_at).toLocaleString("pt-BR", {
-                                  timeZone: "America/Sao_Paulo",
+                                  
                                 })}
                               </p>
                             </div>

@@ -457,7 +457,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                           </span>
                           <p className="text-sm font-semibold">
                             {new Date(request.created_at).toLocaleString("pt-BR", {
-                              timeZone: "America/Sao_Paulo",
+                              
                             })}
                           </p>
                         </div>
@@ -588,7 +588,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                     </p>
                     <p className={cn("text-xs", mutedText)}>
                       {new Date(request.created_at).toLocaleString("pt-BR", {
-                        timeZone: "America/Sao_Paulo",
+                        
                       })}{" "}
                       · {getHistoryDescription(request)}
                     </p>

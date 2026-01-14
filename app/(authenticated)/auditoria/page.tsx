@@ -5,7 +5,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/theme-provider";
-import { Activity, ClipboardList, History } from "lucide-react";
+import { Activity, ClipboardList } from "lucide-react";
 
 const audits = [
   {
@@ -16,18 +16,11 @@ const audits = [
     icon: Activity,
   },
   {
-    id: "acoes",
-    title: "Auditoria de Ações",
-    description: "Chamados em aberto e encerrados nas ações em massa.",
+    id: "acoes-aprovacoes",
+    title: "Auditoria de Ações e Aprovações",
+    description: "Chamados em massa e decisões da fila de aprovação.",
     href: "/auditoria/acoes",
     icon: ClipboardList,
-  },
-  {
-    id: "fila",
-    title: "Auditoria da Fila de Aprovação",
-    description: "Histórico de aprovações, devoluções e reprovações.",
-    href: "/auditoria/fila-aprovacoes",
-    icon: History,
   },
 ];
 

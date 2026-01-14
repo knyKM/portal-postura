@@ -199,7 +199,7 @@ export default function ScriptsExplorerPage() {
                     Tamanho: {fileContent.size} bytes · Última modificação:{" "}
                     {new Date(fileContent.lastModified).toLocaleString(
                       "pt-BR",
-                      { timeZone: "America/Sao_Paulo" }
+                      { }
                     )}
                   </p>
                   <pre className="mt-3 max-h-[22rem] overflow-auto rounded-2xl border border-white/10 bg-black/50 p-3 text-xs text-purple-100">

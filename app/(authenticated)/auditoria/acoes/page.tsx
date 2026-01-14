@@ -20,6 +20,21 @@ type ActionRequest = {
   approved_at: string | null;
 };
 
+type ApprovalHistory = {
+  id: number;
+  request_id: number;
+  type: string;
+  message: string | null;
+  actor_name: string | null;
+  created_at: string;
+  action_type: string | null;
+  requester_name: string | null;
+  requester_email: string | null;
+  requested_status: string | null;
+  filter_mode: string | null;
+  filter_value: string | null;
+};
+
 function downloadFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -52,7 +67,7 @@ function formatDateTime(value: string | null) {
   if (!value) return "-";
   const hasTimeZone = /Z|[+-]\d{2}:?\d{2}$/.test(value);
   if (hasTimeZone) {
-    return new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    return new Date(value).toLocaleString("pt-BR", { });
   }
   const normalized = value.includes("T") ? value : value.replace(" ", "T");
   return new Date(normalized).toLocaleString("pt-BR");
@@ -63,6 +78,7 @@ export default function AuditoriaAcoesPage() {
   const isDark = theme === "dark";
   const [openRequests, setOpenRequests] = useState<ActionRequest[]>([]);
   const [closedRequests, setClosedRequests] = useState<ActionRequest[]>([]);
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -78,20 +94,26 @@ export default function AuditoriaAcoesPage() {
     setError(null);
     void (async () => {
       try {
-        const [openRes, closedRes] = await Promise.all([
+        const [openRes, closedRes, historyRes] = await Promise.all([
           fetch("/api/actions/requests?status=open&limit=200"),
           fetch("/api/actions/requests?status=closed&limit=200"),
+          fetch("/api/actions/approval-history?limit=300"),
         ]);
         const openData = await openRes.json().catch(() => null);
         const closedData = await closedRes.json().catch(() => null);
+        const historyData = await historyRes.json().catch(() => null);
         if (!openRes.ok) {
           throw new Error(openData?.error || "Falha ao buscar chamados abertos.");
         }
         if (!closedRes.ok) {
           throw new Error(closedData?.error || "Falha ao buscar chamados encerrados.");
         }
+        if (!historyRes.ok) {
+          throw new Error(historyData?.error || "Falha ao buscar histórico de aprovação.");
+        }
         setOpenRequests(openData?.requests ?? []);
         setClosedRequests(closedData?.requests ?? []);
+        setApprovalHistory(historyData?.history ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erro ao carregar auditoria.");
       } finally {
@@ -100,46 +122,75 @@ export default function AuditoriaAcoesPage() {
     })();
   }, []);
 
-  const openRows = useMemo(
-    () => [
-      ["id", "acao", "status", "solicitante", "email", "criado_em", "conjunto", "status_alvo"],
-      ...openRequests.map((request) => [
-        String(request.id),
-        request.action_type,
-        request.status,
-        request.requester_name ?? "",
-        request.requester_email ?? "",
-        formatDateTime(request.created_at),
-        request.filter_value,
-        request.requested_status ?? "",
-      ]),
-    ],
-    [openRequests]
-  );
+  const exportRows = useMemo(() => {
+    const header = [
+      "origem",
+      "id",
+      "acao",
+      "status",
+      "decisao",
+      "solicitante",
+      "email",
+      "aprovador",
+      "criado_em",
+      "aprovado_em",
+      "conjunto",
+      "status_alvo",
+      "motivo",
+    ];
+    const openRows = openRequests.map((request) => [
+      "acao_aberta",
+      String(request.id),
+      request.action_type,
+      request.status,
+      "",
+      request.requester_name ?? "",
+      request.requester_email ?? "",
+      "",
+      formatDateTime(request.created_at),
+      "",
+      request.filter_value,
+      request.requested_status ?? "",
+      "",
+    ]);
+    const closedRows = closedRequests.map((request) => [
+      "acao_encerrada",
+      String(request.id),
+      request.action_type,
+      request.status,
+      "",
+      request.requester_name ?? "",
+      request.requester_email ?? "",
+      request.approved_at ? "Aprovador registrado" : "",
+      formatDateTime(request.created_at),
+      formatDateTime(request.approved_at),
+      request.filter_value,
+      request.requested_status ?? "",
+      "",
+    ]);
+    const approvalRows = approvalHistory.map((entry) => [
+      "fila_aprovacao",
+      String(entry.request_id),
+      entry.action_type ?? "",
+      "",
+      entry.type ?? "",
+      entry.requester_name ?? "",
+      entry.requester_email ?? "",
+      entry.actor_name ?? "",
+      formatDateTime(entry.created_at),
+      "",
+      entry.filter_value ?? "",
+      entry.requested_status ?? "",
+      entry.message ?? "",
+    ]);
+    return [header, ...openRows, ...closedRows, ...approvalRows];
+  }, [openRequests, closedRequests, approvalHistory]);
 
-  const closedRows = useMemo(
-    () => [
-      ["id", "acao", "status", "solicitante", "email", "criado_em", "aprovado_em", "conjunto", "status_alvo"],
-      ...closedRequests.map((request) => [
-        String(request.id),
-        request.action_type,
-        request.status,
-        request.requester_name ?? "",
-        request.requester_email ?? "",
-        formatDateTime(request.created_at),
-        formatDateTime(request.approved_at),
-        request.filter_value,
-        request.requested_status ?? "",
-      ]),
-    ],
-    [closedRequests]
-  );
-
-  function exportRows(rows: string[][], label: string, format: "csv" | "xlsx") {
-    const content = buildCsv(rows);
+  function exportAll(format: "csv" | "xlsx") {
+    const content = buildCsv(exportRows);
     downloadFile(
       content,
-      `auditoria-acoes-${label}.${format}`,
+      `auditoria-acoes-e-aprovacoes.${format}`,
       format === "csv"
         ? "text/csv;charset=utf-8"
         : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -148,8 +199,8 @@ export default function AuditoriaAcoesPage() {
 
   return (
     <DashboardShell
-      pageTitle="Auditoria de Ações"
-      pageSubtitle="Chamados em aberto e encerrados com detalhes de execução"
+      pageTitle="Auditoria de Ações e Aprovações"
+      pageSubtitle="Chamados e decisões registradas para governança operacional"
     >
       <div className="flex w-full flex-col gap-6 px-4 lg:px-10">
         <div
@@ -176,36 +227,18 @@ export default function AuditoriaAcoesPage() {
                 size="sm"
                 variant="outline"
                 className="rounded-full border-white/20 text-[11px]"
-                onClick={() => exportRows(openRows, "abertos", "csv")}
+                onClick={() => exportAll("csv")}
               >
-                Exportar abertos CSV
+                Exportar CSV
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 className="rounded-full border-white/20 text-[11px]"
-                onClick={() => exportRows(openRows, "abertos", "xlsx")}
+                onClick={() => exportAll("xlsx")}
               >
-                Exportar abertos XLSX
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="rounded-full border-white/20 text-[11px]"
-                onClick={() => exportRows(closedRows, "encerrados", "csv")}
-              >
-                Exportar encerrados CSV
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="rounded-full border-white/20 text-[11px]"
-                onClick={() => exportRows(closedRows, "encerrados", "xlsx")}
-              >
-                Exportar encerrados XLSX
+                Exportar XLSX
               </Button>
             </div>
           </div>
@@ -346,6 +379,76 @@ export default function AuditoriaAcoesPage() {
                       <td className="px-4 py-3">{formatDateTime(request.approved_at)}</td>
                       <td className="px-4 py-3 text-xs">{request.filter_value}</td>
                       <td className="px-4 py-3">{request.requested_status ?? "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={cn(
+            "rounded-3xl border",
+            isDark ? "border-zinc-800 bg-[#050816]/80" : "border-slate-200 bg-white"
+          )}
+        >
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">
+              Histórico da fila de aprovação
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className={tableHeader}>
+                <tr>
+                  <th className="px-4 py-3">Evento</th>
+                  <th className="px-4 py-3">Chamado</th>
+                  <th className="px-4 py-3">Decisão</th>
+                  <th className="px-4 py-3">Aprovador</th>
+                  <th className="px-4 py-3">Solicitante</th>
+                  <th className="px-4 py-3">Ação</th>
+                  <th className="px-4 py-3">Status alvo</th>
+                  <th className="px-4 py-3">Data</th>
+                  <th className="px-4 py-3">Motivo</th>
+                </tr>
+              </thead>
+              <tbody className={tableBody}>
+                {isLoading ? (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-xs text-zinc-500" colSpan={9}>
+                      Carregando histórico...
+                    </td>
+                  </tr>
+                ) : approvalHistory.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-xs text-zinc-500" colSpan={9}>
+                      Nenhuma decisão registrada.
+                    </td>
+                  </tr>
+                ) : (
+                  approvalHistory.map((entry) => (
+                    <tr
+                      key={entry.id}
+                      className={cn(
+                        "border-t",
+                        isDark ? "border-zinc-800/60" : "border-slate-200"
+                      )}
+                    >
+                      <td className="px-4 py-3 font-semibold">{entry.id}</td>
+                      <td className="px-4 py-3">#{entry.request_id}</td>
+                      <td className="px-4 py-3">{entry.type ?? "-"}</td>
+                      <td className="px-4 py-3">{entry.actor_name ?? "-"}</td>
+                      <td className="px-4 py-3">
+                        <p>{entry.requester_name ?? "-"}</p>
+                        <p className="text-[11px] text-zinc-500">
+                          {entry.requester_email ?? ""}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">{entry.action_type ?? "-"}</td>
+                      <td className="px-4 py-3">{entry.requested_status ?? "-"}</td>
+                      <td className="px-4 py-3">{formatDateTime(entry.created_at)}</td>
+                      <td className="px-4 py-3 text-xs">{entry.message ?? "-"}</td>
                     </tr>
                   ))
                 )}

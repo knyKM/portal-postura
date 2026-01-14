@@ -447,7 +447,7 @@ export default function SensoresPage() {
                         <td className="px-4 py-3 text-zinc-400">
                           {sensor.lastCheckedAt
                             ? new Date(sensor.lastCheckedAt).toLocaleString("pt-BR", {
-                                timeZone: "America/Sao_Paulo",
+                                
                               })
                             : "-"}
                         </td>

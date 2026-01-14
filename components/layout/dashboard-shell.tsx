@@ -9,6 +9,7 @@ import { useTheme } from "@/components/theme/theme-provider";
 import { cn } from "@/lib/utils";
 import { Bell } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 type User = {
   id: number;
@@ -114,28 +115,6 @@ export function DashboardShell({
       ignore = true;
     };
   }, [user?.id]);
-
-  useEffect(() => {
-    if (!user || !pathname || !accessReady) return;
-    if (user.role === "admin") return;
-    const allowedRoutes = user.allowed_routes ?? [];
-    const alwaysAllowed = [
-      "/vulnerabilidades/insights",
-      "/configuracoes",
-      "/changelog",
-      "/changelog/manual",
-      "/dashboard",
-    ];
-    const isAllowed = allowedRoutes.some(
-      (allowed) => pathname === allowed || pathname.startsWith(`${allowed}/`)
-    );
-    const isAlwaysAllowed = alwaysAllowed.some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`)
-    );
-    if (!isAlwaysAllowed && !isAllowed) {
-      router.replace("/vulnerabilidades/insights");
-    }
-  }, [user, pathname, router]);
 
   const alwaysAllowed = [
     "/vulnerabilidades/insights",
@@ -289,8 +268,46 @@ export function DashboardShell({
     };
   }
 
-  if (checkingAuth || !user || (!accessReady && user.role !== "admin") || isDenied) {
+  if (checkingAuth || !user || (!accessReady && user.role !== "admin")) {
     return null;
+  }
+
+  if (isDenied) {
+    return (
+      <div
+        className={cn(
+          "flex h-screen w-full items-center justify-center",
+          isDark ? "bg-[#050816] text-zinc-100" : "bg-slate-100 text-slate-900"
+        )}
+      >
+        <div
+          className={cn(
+            "max-w-xl rounded-3xl border px-6 py-6 text-center",
+            isDark ? "border-zinc-800 bg-[#050816]" : "border-slate-200 bg-white"
+          )}
+        >
+          <p className="text-xs uppercase tracking-[0.3em] text-amber-400">
+            Acesso restrito
+          </p>
+          <h2 className="mt-2 text-xl font-semibold">
+            Você não tem permissão para acessar este módulo
+          </h2>
+          <p className={cn("mt-2 text-sm", isDark ? "text-zinc-400" : "text-slate-600")}>
+            Se precisar de acesso, solicite ao administrador a atualização do nível
+            de segurança.
+          </p>
+          <div className="mt-4 flex justify-center">
+            <Button
+              type="button"
+              onClick={() => router.replace("/vulnerabilidades/insights")}
+              className="rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-sm font-semibold text-white"
+            >
+              Voltar ao dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -453,7 +470,7 @@ export function DashboardShell({
                             <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">
                               {new Date(notification.created_at).toLocaleString(
                                 "pt-BR",
-                                { timeZone: "America/Sao_Paulo" }
+                                { }
                               )}
                             </p>
                             <Badge

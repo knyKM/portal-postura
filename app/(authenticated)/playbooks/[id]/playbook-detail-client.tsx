@@ -404,7 +404,7 @@ function moveStep(index: number, direction: -1 | 1) {
                 Criado em:{" "}
                 <span className="text-zinc-200">
                   {new Date(playbook.createdAt).toLocaleString("pt-BR", {
-                    timeZone: "America/Sao_Paulo",
+                    
                   })}
                 </span>
               </p>
@@ -412,7 +412,7 @@ function moveStep(index: number, direction: -1 | 1) {
                 Atualizado em:{" "}
                 <span className="text-zinc-200">
                   {new Date(playbook.updatedAt).toLocaleString("pt-BR", {
-                    timeZone: "America/Sao_Paulo",
+                    
                   })}
                 </span>
               </p>

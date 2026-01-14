@@ -119,6 +119,7 @@ export default function UsuariosPage() {
   const [creatingLevel, setCreatingLevel] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+  const isEditingLevel = Boolean(editingLevelKey);
   const portalTarget = typeof window !== "undefined" ? document.body : null;
 
   useEffect(() => {
@@ -285,8 +286,7 @@ export default function UsuariosPage() {
     }
   }
 
-  async function handleCreateSecurityLevel(event: FormEvent) {
-    event.preventDefault();
+  async function handleCreateSecurityLevel() {
     if (creatingLevel) return;
     setLevelsError(null);
     setCreatingLevel(true);
@@ -321,8 +321,7 @@ export default function UsuariosPage() {
     }
   }
 
-  async function handleUpdateSecurityLevel(event: FormEvent) {
-    event.preventDefault();
+  async function handleUpdateSecurityLevel() {
     if (!editingLevelKey || editingLevelLoading) return;
     setLevelsError(null);
     setEditingLevelLoading(true);
@@ -358,6 +357,15 @@ export default function UsuariosPage() {
     } finally {
       setEditingLevelLoading(false);
     }
+  }
+
+  async function handleSecurityLevelSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (isEditingLevel) {
+      await handleUpdateSecurityLevel();
+      return;
+    }
+    await handleCreateSecurityLevel();
   }
 
   async function handleDeleteSecurityLevel(key: string) {
@@ -818,7 +826,7 @@ export default function UsuariosPage() {
                             {userItem.created_at
                               ? new Date(userItem.created_at).toLocaleString(
                                   "pt-BR",
-                                  { timeZone: "America/Sao_Paulo" }
+                                  { }
                                 )
                               : "-"}
                           </td>
@@ -1207,18 +1215,52 @@ export default function UsuariosPage() {
                     </div>
                   )}
                   <form
-                    onSubmit={handleCreateSecurityLevel}
+                    onSubmit={handleSecurityLevelSubmit}
                     className="grid gap-3 md:grid-cols-3"
                   >
+                    {isEditingLevel && (
+                      <div
+                        className={cn(
+                          "md:col-span-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-xs",
+                          isDark
+                            ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
+                            : "border-purple-200 bg-purple-50 text-purple-700"
+                        )}
+                      >
+                        <span>
+                          Editando nível:{" "}
+                          <strong className="font-semibold">
+                            {editingLevelName || editingLevelKey}
+                          </strong>
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingLevelKey(null);
+                            setEditingLevelName("");
+                            setEditingLevelDescription("");
+                            setEditingLevelRoutes([]);
+                          }}
+                        >
+                          Cancelar edição
+                        </Button>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-zinc-400">
                         Nome do nível
                       </label>
                       <Input
-                        value={newLevelName}
-                        onChange={(event) => setNewLevelName(event.target.value)}
+                        value={isEditingLevel ? editingLevelName : newLevelName}
+                        onChange={(event) =>
+                          isEditingLevel
+                            ? setEditingLevelName(event.target.value)
+                            : setNewLevelName(event.target.value)
+                        }
                         placeholder="Ex: Operacional"
-                        disabled={creatingLevel}
+                        disabled={creatingLevel || editingLevelLoading}
                         required
                       />
                     </div>
@@ -1227,10 +1269,16 @@ export default function UsuariosPage() {
                         Descrição
                       </label>
                       <Input
-                        value={newLevelDescription}
-                        onChange={(event) => setNewLevelDescription(event.target.value)}
+                        value={
+                          isEditingLevel ? editingLevelDescription : newLevelDescription
+                        }
+                        onChange={(event) =>
+                          isEditingLevel
+                            ? setEditingLevelDescription(event.target.value)
+                            : setNewLevelDescription(event.target.value)
+                        }
                         placeholder="Visibilidade e permissões planejadas"
-                        disabled={creatingLevel}
+                        disabled={creatingLevel || editingLevelLoading}
                       />
                     </div>
                     <div className="md:col-span-3">
@@ -1242,7 +1290,9 @@ export default function UsuariosPage() {
                       </p>
                       <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         {securityRouteOptions.map((option) => {
-                          const checked = newLevelRoutes.includes(option.value);
+                          const checked = (
+                            isEditingLevel ? editingLevelRoutes : newLevelRoutes
+                          ).includes(option.value);
                           return (
                             <label
                               key={option.value}
@@ -1256,13 +1306,19 @@ export default function UsuariosPage() {
                               <input
                                 type="checkbox"
                                 checked={checked}
-                                disabled={creatingLevel}
+                                disabled={creatingLevel || editingLevelLoading}
                                 onChange={() =>
-                                  setNewLevelRoutes((prev) =>
-                                    checked
-                                      ? prev.filter((value) => value !== option.value)
-                                      : [...prev, option.value]
-                                  )
+                                  isEditingLevel
+                                    ? setEditingLevelRoutes((prev) =>
+                                        checked
+                                          ? prev.filter((value) => value !== option.value)
+                                          : [...prev, option.value]
+                                      )
+                                    : setNewLevelRoutes((prev) =>
+                                        checked
+                                          ? prev.filter((value) => value !== option.value)
+                                          : [...prev, option.value]
+                                      )
                                 }
                               />
                               <span>{option.label}</span>
@@ -1274,105 +1330,22 @@ export default function UsuariosPage() {
                     <div className="md:col-span-3">
                       <Button
                         type="submit"
-                        disabled={creatingLevel}
-                        className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 text-sm font-semibold text-white"
+                        disabled={creatingLevel || editingLevelLoading}
+                        className={cn(
+                          "rounded-2xl text-sm font-semibold text-white",
+                          isEditingLevel
+                            ? "bg-gradient-to-r from-purple-600 to-indigo-600"
+                            : "bg-gradient-to-r from-sky-500 to-blue-600"
+                        )}
                       >
-                        {creatingLevel ? "Salvando..." : "Criar nível de segurança"}
+                        {creatingLevel || editingLevelLoading
+                          ? "Salvando..."
+                          : isEditingLevel
+                          ? "Salvar alterações"
+                          : "Criar nível de segurança"}
                       </Button>
                     </div>
                   </form>
-                  {editingLevelKey && (
-                    <form
-                      onSubmit={handleUpdateSecurityLevel}
-                      className="mt-6 grid gap-3 md:grid-cols-3"
-                    >
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-zinc-400">
-                          Editando nível
-                        </label>
-                        <Input value={editingLevelKey} disabled />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-zinc-400">
-                          Nome
-                        </label>
-                        <Input
-                          value={editingLevelName}
-                          onChange={(event) => setEditingLevelName(event.target.value)}
-                          disabled={editingLevelLoading}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-1 md:col-span-1">
-                        <label className="text-xs font-semibold text-zinc-400">
-                          Descrição
-                        </label>
-                        <Input
-                          value={editingLevelDescription}
-                          onChange={(event) =>
-                            setEditingLevelDescription(event.target.value)
-                          }
-                          disabled={editingLevelLoading}
-                        />
-                      </div>
-                      <div className="md:col-span-3">
-                        <p className="text-xs font-semibold text-zinc-400">
-                          Módulos permitidos
-                        </p>
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                          {securityRouteOptions.map((option) => {
-                            const checked = editingLevelRoutes.includes(option.value);
-                            return (
-                              <label
-                                key={option.value}
-                                className={cn(
-                                  "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs",
-                                  isDark
-                                    ? "border-white/10 bg-white/5 text-zinc-200"
-                                    : "border-slate-200 bg-white text-slate-700"
-                                )}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  disabled={editingLevelLoading}
-                                  onChange={() =>
-                                    setEditingLevelRoutes((prev) =>
-                                      checked
-                                        ? prev.filter((value) => value !== option.value)
-                                        : [...prev, option.value]
-                                    )
-                                  }
-                                />
-                                <span>{option.label}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="md:col-span-3 flex flex-wrap gap-2">
-                        <Button
-                          type="submit"
-                          disabled={editingLevelLoading}
-                          className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-sm font-semibold text-white"
-                        >
-                          {editingLevelLoading ? "Atualizando..." : "Salvar alterações"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setEditingLevelKey(null);
-                            setEditingLevelName("");
-                            setEditingLevelDescription("");
-                            setEditingLevelRoutes([]);
-                          }}
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </form>
-                  )}
                   <div
                     className={cn(
                       "grid gap-3 md:grid-cols-3",

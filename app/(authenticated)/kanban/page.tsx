@@ -256,7 +256,7 @@ export default function KanbanPage() {
       return dateString;
     }
     return parsed.toLocaleDateString("pt-BR", {
-      timeZone: "America/Sao_Paulo",
+      
     });
   }
 
@@ -759,7 +759,7 @@ export default function KanbanPage() {
               >
                 Criado em{" "}
                 {new Date(editingTask.createdAt).toLocaleString("pt-BR", {
-                  timeZone: "America/Sao_Paulo",
+                  
                 })}
               </p>
               <div className="mt-6 flex flex-col gap-3 border-t border-dashed pt-4 sm:flex-row sm:justify-end">

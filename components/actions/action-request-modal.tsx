@@ -63,6 +63,18 @@ const actionLabels: Record<string, string> = {
   delete: "Deletar issue",
 };
 
+const statusLabels: Record<string, string> = {
+  pending: "Pendente",
+  returned: "Devolvido",
+  approved: "Aprovado",
+  queued: "Em fila",
+  running: "Executando",
+  completed: "Execução concluída",
+  failed: "Erro",
+  declined: "Reprovado",
+  cancelled: "Cancelado",
+};
+
 export function ActionRequestModal({
   requestId,
   onClose,
@@ -94,7 +106,7 @@ export function ActionRequestModal({
     const hasTimeZone = /Z|[+-]\d{2}:?\d{2}$/.test(value);
     if (hasTimeZone) {
       return new Date(value).toLocaleString("pt-BR", {
-        timeZone: "America/Sao_Paulo",
+        
       });
     }
     const normalized = value.includes("T") ? value : value.replace(" ", "T");
@@ -204,17 +216,17 @@ export function ActionRequestModal({
   if (!requestId) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className={cn("w-full max-w-4xl rounded-3xl border p-6", panelClass)}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3">
+      <div className={cn("w-full max-w-4xl rounded-3xl border p-4", panelClass)}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-purple-400">
               Chamado #{requestId}
             </p>
-            <h3 className={cn("text-xl font-semibold", headerClass)}>
+            <h3 className={cn("text-lg font-semibold", headerClass)}>
               Detalhes do chamado
             </h3>
-            <p className={cn("text-xs", subtleText)}>
+            <p className={cn("text-[11px]", subtleText)}>
               Informações, histórico e mensagens da solicitação.
             </p>
           </div>
@@ -239,66 +251,66 @@ export function ActionRequestModal({
             {error}
           </div>
         ) : record ? (
-          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <div className="mt-3 grid gap-3 lg:grid-cols-3">
             <Card
               className={cn(
-                "rounded-2xl border p-4",
+                "rounded-2xl border px-3 py-2",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+              <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-400">
                 Solicitante
               </p>
-              <p className={cn("mt-2 text-sm font-semibold", headerClass)}>
+              <p className={cn("mt-1 text-sm font-semibold", headerClass)}>
                 {record.requester_name ?? "-"}
               </p>
-              <p className={cn("text-xs", subtleText)}>
+              <p className={cn("text-[11px]", subtleText)}>
                 {record.requester_email ?? "-"}
-              </p>
-              <p className={cn("mt-2 text-xs", subtleText)}>
-                Abertura: {formatDateTime(record.created_at)}
               </p>
             </Card>
 
             <Card
               className={cn(
-                "rounded-2xl border p-4",
+                "rounded-2xl border px-3 py-2",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+              <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-400">
                 Aprovação
               </p>
-              <p className={cn("mt-2 text-sm font-semibold", headerClass)}>
+              <p className={cn("mt-1 text-sm font-semibold", headerClass)}>
                 {record.approved_by ?? "Sem aprovador"}
               </p>
-              <p className={cn("text-xs", subtleText)}>
+              <p className={cn("text-[11px]", subtleText)}>
                 {record.approved_at ? formatDateTime(record.approved_at) : "Aguardando decisão"}
               </p>
             </Card>
 
             <Card
               className={cn(
-                "rounded-2xl border p-3",
+                "rounded-2xl border px-3 py-2",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Status</p>
-              <p className={cn("mt-2 text-sm font-semibold", headerClass)}>
-                {record.status}
+              <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-400">Status</p>
+              <p className={cn("mt-1 text-sm font-semibold", headerClass)}>
+                {statusLabels[record.status] ?? record.status}
+              </p>
+              <p className={cn("mt-1 text-[11px]", subtleText)}>
+                Abertura: {formatDateTime(record.created_at)}
               </p>
             </Card>
 
             <Card
               className={cn(
-                "rounded-2xl border p-4 lg:col-span-3",
+                "rounded-2xl border p-3 lg:col-span-3",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
                 Detalhes da solicitação
               </p>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="mt-2 grid gap-3 md:grid-cols-2">
                 <div>
                   <p className={cn("text-xs uppercase tracking-[0.3em]", subtleText)}>
                     Tipo de ação
@@ -360,7 +372,7 @@ export function ActionRequestModal({
                   )}
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div>
                   <p className={cn("text-xs uppercase tracking-[0.3em]", subtleText)}>
                     Ação planejada
@@ -433,14 +445,14 @@ export function ActionRequestModal({
 
             <Card
               className={cn(
-                "rounded-2xl border p-4 lg:col-span-3",
+                "rounded-2xl border p-3 lg:col-span-3",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
                 Histórico do chamado
               </p>
-              <div className="mt-3 space-y-2">
+              <div className="mt-2 space-y-2">
                 {historyItems.length === 0 ? (
                   <p className={cn("text-xs", subtleText)}>
                     Nenhum histórico disponível.
@@ -474,12 +486,12 @@ export function ActionRequestModal({
 
             <Card
               className={cn(
-                "rounded-2xl border p-4 lg:col-span-3",
+                "rounded-2xl border p-3 lg:col-span-3",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Chat</p>
-              <div className="mt-3 space-y-3">
+              <div className="mt-2 space-y-3">
                 {messages.length === 0 ? (
                   <p className={cn("text-xs", subtleText)}>
                     Nenhuma mensagem registrada.
@@ -501,7 +513,7 @@ export function ActionRequestModal({
                       </p>
                       <p className={cn("text-[11px]", subtleText)}>
                         {new Date(message.created_at).toLocaleString("pt-BR", {
-                          timeZone: "America/Sao_Paulo",
+                          
                         })}
                       </p>
                       <p className="mt-1 whitespace-pre-wrap text-[12px]">
@@ -513,7 +525,7 @@ export function ActionRequestModal({
               </div>
 
               {canChat ? (
-                <div className="mt-4 space-y-2">
+                <div className="mt-3 space-y-2">
                   <Textarea
                     value={chatMessage}
                     onChange={(event) => setChatMessage(event.target.value)}
