@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { ActionForm } from "@/components/actions/action-form";
 import { ActionRequestModal } from "@/components/actions/action-request-modal";
 import { useTheme } from "@/components/theme/theme-provider";
+import { ASSIGNEE_CUSTOM_FIELDS } from "@/lib/actions/assignee-fields";
 import {
   Workflow,
   Repeat,
@@ -105,6 +106,8 @@ type UserActionRequest = {
   requested_status: string | null;
   payload: {
     customFields?: Array<{ id: string; label?: string; value?: string; mode?: string }>;
+    assigneeCsvData?: string;
+    assigneeCsvFileName?: string;
     comment?: string;
     fields?: Array<{ key: string; value: string }>;
     projectKey?: string;
@@ -130,26 +133,15 @@ export default function AcoesPage() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [selectedAction, setSelectedAction] = useState<string | null>("status");
-  const [filterMode, setFilterMode] = useState<"jql" | "ids">("jql");
+  const [filterMode, setFilterMode] = useState<"jql" | "ids" | "bulk">("jql");
   const [filterValue, setFilterValue] = useState("");
   const [statusValue, setStatusValue] = useState(statusOptions[0]);
-  const assigneeCustomFields = [
-    { id: "customfield_11702", label: "Área Proprietária Ativo Diretor_LB" },
-    { id: "customfield_11704", label: "Área Proprietária Ativo Ponto Focal_LB" },
-    { id: "customfield_11703", label: "Área Proprietária Ativo Gerente Sr_LB" },
-    { id: "customfield_11706", label: "Área Solucionadora Responsável Gerente Sr_LB" },
-    { id: "customfield_11705", label: "Área Solucionadora Responsável Diretor_LB" },
-    { id: "customfield_11707", label: "Área Solucionadora Responsável Ponto Focal_LB" },
-    { id: "customfield_10663", label: "Área Solucionadora Responsável VP" },
-    { id: "customfield_10647", label: "Área Negócio Responsável VP" },
-    { id: "customfield_13200", label: "Owner de Desenvolvimento" },
-    { id: "customfield_13202", label: "Owner de Operação" },
-    { id: "customfield_13205", label: "Owner de Sustentação" },
-    { id: "customfield_12301", label: "Owner de Negócio" },
-  ];
+  const assigneeCustomFields = ASSIGNEE_CUSTOM_FIELDS;
   const [assigneeFields, setAssigneeFields] = useState(
     assigneeCustomFields.map((field) => ({ ...field, value: "" }))
   );
+  const [assigneeBulkCsvData, setAssigneeBulkCsvData] = useState<string | null>(null);
+  const [assigneeBulkFileName, setAssigneeBulkFileName] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const [fields, setFields] = useState<Array<{ key: string; value: string }>>([
     { key: "", value: "" },
@@ -170,12 +162,16 @@ export default function AcoesPage() {
   const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editSelectedAction, setEditSelectedAction] = useState<string | null>(null);
-  const [editFilterMode, setEditFilterMode] = useState<"jql" | "ids">("jql");
+  const [editFilterMode, setEditFilterMode] = useState<"jql" | "ids" | "bulk">(
+    "jql"
+  );
   const [editFilterValue, setEditFilterValue] = useState("");
   const [editStatusValue, setEditStatusValue] = useState(statusOptions[0]);
   const [editAssigneeFields, setEditAssigneeFields] = useState(
     assigneeCustomFields.map((field) => ({ ...field, value: "" }))
   );
+  const [editAssigneeBulkCsvData, setEditAssigneeBulkCsvData] = useState<string | null>(null);
+  const [editAssigneeBulkFileName, setEditAssigneeBulkFileName] = useState<string | null>(null);
   const [editComment, setEditComment] = useState("");
   const [editFields, setEditFields] = useState<Array<{ key: string; value: string }>>([
     { key: "", value: "" },
@@ -229,6 +225,15 @@ export default function AcoesPage() {
     };
   }, [requestsRefreshKey]);
 
+  useEffect(() => {
+    if (selectedAction !== "assignee" && filterMode === "bulk") {
+      setFilterMode("jql");
+      setFilterValue("");
+      setAssigneeBulkCsvData(null);
+      setAssigneeBulkFileName(null);
+    }
+  }, [selectedAction, filterMode]);
+
   function normalizeAssigneeJql(value: string) {
     const trimmed = value.trim();
     if (!trimmed) {
@@ -250,7 +255,105 @@ export default function AcoesPage() {
       .filter(Boolean);
   }
 
-  function handleFilterModeChange(mode: "jql" | "ids") {
+  function parseCsvRows(raw: string) {
+    const rows: string[][] = [];
+    let current = "";
+    let row: string[] = [];
+    let inQuotes = false;
+
+    const pushCell = () => {
+      row.push(current);
+      current = "";
+    };
+
+    const pushRow = () => {
+      if (row.length === 0) return;
+      if (row.every((cell) => !cell.trim())) {
+        row = [];
+        return;
+      }
+      rows.push(row);
+      row = [];
+    };
+
+    for (let index = 0; index < raw.length; index += 1) {
+      const char = raw[index];
+      const next = raw[index + 1];
+      if (char === "\"") {
+        if (inQuotes && next === "\"") {
+          current += "\"";
+          index += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (char === "," && !inQuotes) {
+        pushCell();
+        continue;
+      }
+      if ((char === "\n" || char === "\r") && !inQuotes) {
+        if (char === "\r" && next === "\n") {
+          index += 1;
+        }
+        pushCell();
+        pushRow();
+        continue;
+      }
+      current += char;
+    }
+    pushCell();
+    pushRow();
+    return rows;
+  }
+
+  function extractAssigneeBulkIds(raw: string) {
+    const rows = parseCsvRows(raw);
+    if (!rows.length) {
+      return { ids: [], error: "O arquivo está vazio." };
+    }
+    const header = rows[0].map((cell) => cell.trim());
+    const normalizedHeader = header.map((cell) => cell.toLowerCase());
+    const idIndex = normalizedHeader.findIndex((cell) => cell === "id" || cell === "ids");
+    if (idIndex === -1 || idIndex !== 0) {
+      return { ids: [], error: "A primeira coluna do template deve ser ID." };
+    }
+    const allowedLabels = new Set(
+      assigneeCustomFields.map((field) => field.label.toLowerCase())
+    );
+    const hasKnownField = normalizedHeader.some((cell) => allowedLabels.has(cell));
+    if (!hasKnownField) {
+      return {
+        ids: [],
+        error: "As colunas de áreas/responsáveis não foram identificadas no template.",
+      };
+    }
+    const ids: string[] = [];
+    const invalid: string[] = [];
+    rows.slice(1).forEach((row) => {
+      const id = (row[idIndex] ?? "").trim();
+      if (!id) return;
+      if (!/^ASSETN-/i.test(id)) {
+        invalid.push(id);
+        return;
+      }
+      ids.push(id);
+    });
+    if (!ids.length) {
+      return { ids: [], error: "Nenhum ID válido foi encontrado." };
+    }
+    if (invalid.length) {
+      return {
+        ids: [],
+        error: `Apenas IDs iniciados com ASSETN- são permitidos. Ex: ${invalid
+          .slice(0, 5)
+          .join(", ")}.`,
+      };
+    }
+    return { ids, error: null };
+  }
+
+  function handleFilterModeChange(mode: "jql" | "ids" | "bulk") {
     if (selectedAction === "delete" && mode === "jql") {
       return;
     }
@@ -263,6 +366,10 @@ export default function AcoesPage() {
     setIssuesCount(null);
     if (mode !== "ids") {
       setIdsFileName(null);
+    }
+    if (mode !== "bulk") {
+      setAssigneeBulkCsvData(null);
+      setAssigneeBulkFileName(null);
     }
   }
 
@@ -277,10 +384,12 @@ export default function AcoesPage() {
     fieldsValue,
     projectValue,
     idsFileNameValue,
+    assigneeCsvDataValue,
+    assigneeCsvFileNameValue,
   }: {
     requestId?: number | null;
     actionType: string | null;
-    filterModeValue: "jql" | "ids";
+    filterModeValue: "jql" | "ids" | "bulk";
     filterValueValue: string;
     statusValueValue: string;
     assigneeFieldsValue: Array<{ id: string; label: string; value: string }>;
@@ -288,6 +397,8 @@ export default function AcoesPage() {
     fieldsValue: Array<{ key: string; value: string }>;
     projectValue: string;
     idsFileNameValue: string | null;
+    assigneeCsvDataValue: string | null;
+    assigneeCsvFileNameValue: string | null;
   }) {
     if (!actionType) {
       setError("Selecione uma ação antes de continuar.");
@@ -297,9 +408,15 @@ export default function AcoesPage() {
     const isEscalate = actionType === "escalate";
 
     if (!isEscalate && !filterValueValue.trim()) {
-      setError("Informe a JQL ou os IDs antes de enviar.");
+      setError(
+        actionType === "assignee" && filterModeValue === "bulk"
+          ? "Envie o arquivo de carga antes de enviar."
+          : "Informe a JQL ou os IDs antes de enviar."
+      );
       return;
     }
+
+    const isAssigneeBulk = actionType === "assignee" && filterModeValue === "bulk";
 
     if (actionType === "assignee") {
       if (filterModeValue === "jql") {
@@ -310,6 +427,21 @@ export default function AcoesPage() {
         }
         if (normalized !== filterValueValue && !requestId) {
           setFilterValue(normalized);
+        }
+      } else if (filterModeValue === "bulk") {
+        if (!assigneeCsvDataValue?.trim()) {
+          setError("Envie o arquivo de carga com IDs e responsáveis.");
+          return;
+        }
+        const ids = parseIssueIds(filterValueValue);
+        if (!ids.length) {
+          setError("Nenhum ID válido foi identificado no arquivo.");
+          return;
+        }
+        const invalid = ids.filter((id) => !/^ASSETN-/i.test(id));
+        if (invalid.length) {
+          setError("Apenas IDs iniciados com ASSETN- são permitidos.");
+          return;
         }
       } else {
         const ids = parseIssueIds(filterValueValue);
@@ -339,7 +471,7 @@ export default function AcoesPage() {
       .filter((field) => field.value);
 
     const assigneePayload =
-      actionType === "assignee"
+      actionType === "assignee" && !isAssigneeBulk
         ? normalizedAssigneeFields.map((field) => ({
             id: field.id,
             label: field.label,
@@ -391,6 +523,8 @@ export default function AcoesPage() {
         filterValue: isEscalate ? projectValue : filterValueValue.trim(),
         requestedStatus: actionType === "status" ? statusValueValue : undefined,
         assigneeFields: actionType === "assignee" ? assigneePayload : undefined,
+        assigneeCsvData: isAssigneeBulk ? assigneeCsvDataValue?.trim() : undefined,
+        assigneeCsvFileName: isAssigneeBulk ? assigneeCsvFileNameValue ?? undefined : undefined,
         comment: actionType === "comment" ? commentValue.trim() : undefined,
         fields: actionType === "fields" || isEscalate ? cleanedFields : undefined,
         projectKey: isEscalate ? projectValue : undefined,
@@ -417,11 +551,15 @@ export default function AcoesPage() {
       setFilterValue("");
       setIssuesCount(null);
       setAssigneeFields(assigneeCustomFields.map((field) => ({ ...field, value: "" })));
+      setAssigneeBulkCsvData(null);
+      setAssigneeBulkFileName(null);
       setComment("");
       setFields([{ key: "", value: "" }]);
       setIdsFileName(null);
       setEditingRequestId(null);
       setIsEditModalOpen(false);
+      setEditAssigneeBulkCsvData(null);
+      setEditAssigneeBulkFileName(null);
       triggerRequestsRefresh();
     } catch (err) {
       setError(
@@ -445,6 +583,8 @@ export default function AcoesPage() {
       fieldsValue: fields,
       projectValue: projectKey,
       idsFileNameValue: idsFileName,
+      assigneeCsvDataValue: assigneeBulkCsvData,
+      assigneeCsvFileNameValue: assigneeBulkFileName,
     });
   }
 
@@ -462,6 +602,8 @@ export default function AcoesPage() {
       fieldsValue: editFields,
       projectValue: editProjectKey,
       idsFileNameValue: editIdsFileName,
+      assigneeCsvDataValue: editAssigneeBulkCsvData,
+      assigneeCsvFileNameValue: editAssigneeBulkFileName,
     });
   }
 
@@ -505,6 +647,34 @@ export default function AcoesPage() {
     setFilterValue(content.trim());
     setIdsFileName(fileName);
     setIssuesCount(null);
+  }
+
+  function handleImportAssigneeBulkFile(content: string, fileName: string) {
+    const parsed = extractAssigneeBulkIds(content);
+    if (parsed.error) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    setFilterMode("bulk");
+    setFilterValue(parsed.ids.join(", "));
+    setAssigneeBulkCsvData(content);
+    setAssigneeBulkFileName(fileName);
+    setIssuesCount(null);
+  }
+
+  function handleEditImportAssigneeBulkFile(content: string, fileName: string) {
+    const parsed = extractAssigneeBulkIds(content);
+    if (parsed.error) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    setEditFilterMode("bulk");
+    setEditFilterValue(parsed.ids.join(", "));
+    setEditAssigneeBulkCsvData(content);
+    setEditAssigneeBulkFileName(fileName);
+    setEditIssuesCount(null);
   }
 
   function handlePrefillFieldKey(fieldKey: string) {
@@ -601,6 +771,9 @@ export default function AcoesPage() {
       case "status":
         return `Alterar status para ${request.requested_status ?? "-"}.`;
       case "assignee":
+        if (request.filter_mode === "bulk" || request.payload?.assigneeCsvData) {
+          return "Mudar responsável via carga.";
+        }
         return request.payload?.customFields?.length
           ? `Mudar responsável (${request.payload.customFields.length} campo${
               request.payload.customFields.length > 1 ? "s" : ""
@@ -779,6 +952,8 @@ export default function AcoesPage() {
                   onClick={() => {
                     setIsEditModalOpen(false);
                     setEditingRequestId(null);
+                    setEditAssigneeBulkCsvData(null);
+                    setEditAssigneeBulkFileName(null);
                   }}
                 >
                   Fechar
@@ -801,10 +976,18 @@ export default function AcoesPage() {
                   message={message}
                   onFilterModeChange={(mode) => {
                     setEditFilterMode(mode);
-                    setEditFilterValue("");
+                    if (editSelectedAction === "assignee" && mode === "jql") {
+                      setEditFilterValue(assigneeJqlPrefix);
+                    } else {
+                      setEditFilterValue("");
+                    }
                     setEditIssuesCount(null);
                     if (mode !== "ids") {
                       setEditIdsFileName(null);
+                    }
+                    if (mode !== "bulk") {
+                      setEditAssigneeBulkCsvData(null);
+                      setEditAssigneeBulkFileName(null);
                     }
                   }}
                   onFilterValueChange={(value) => {
@@ -888,10 +1071,13 @@ export default function AcoesPage() {
                     setEditIdsFileName(fileName);
                     setEditIssuesCount(null);
                   }}
+                  onImportAssigneeCsv={handleEditImportAssigneeBulkFile}
+                  assigneeCsvFileName={editAssigneeBulkFileName}
                   uploadedFileName={editIdsFileName}
                   projectOptions={projectOptions}
                   csvTemplateUrl="/templates/escalate-template.csv"
                   idsTemplateUrl="/templates/action-ids-template.csv"
+                  assigneeCsvTemplateUrl="/templates/assignee-bulk-template.csv"
                 />
               </div>
             </div>
@@ -1045,10 +1231,13 @@ export default function AcoesPage() {
           onSimulateCount={handleSimulateCount}
           onSubmit={handleSubmit}
           onImportIdsFromFile={handleImportIdsFromFile}
+          onImportAssigneeCsv={handleImportAssigneeBulkFile}
+          assigneeCsvFileName={assigneeBulkFileName}
           uploadedFileName={idsFileName}
           projectOptions={projectOptions}
           csvTemplateUrl="/templates/escalate-template.csv"
           idsTemplateUrl="/templates/action-ids-template.csv"
+          assigneeCsvTemplateUrl="/templates/assignee-bulk-template.csv"
         />
 
         <Card className={cardClasses}>
@@ -1181,9 +1370,19 @@ export default function AcoesPage() {
                                 setEditingRequestId(request.id);
                                 setEditSelectedAction(request.action_type);
                                 setEditFilterMode(
-                                  request.filter_mode === "ids" ? "ids" : "jql"
+                                  request.filter_mode === "bulk"
+                                    ? "bulk"
+                                    : request.filter_mode === "ids"
+                                    ? "ids"
+                                    : "jql"
                                 );
                                 setEditFilterValue(request.filter_value ?? "");
+                                setEditAssigneeBulkCsvData(
+                                  request.payload?.assigneeCsvData ?? null
+                                );
+                                setEditAssigneeBulkFileName(
+                                  request.payload?.assigneeCsvFileName ?? null
+                                );
                                 setEditStatusValue(
                                   request.requested_status ?? statusOptions[0]
                                 );

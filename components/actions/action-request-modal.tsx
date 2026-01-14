@@ -428,6 +428,33 @@ export function ActionRequestModal({
                       </div>
                     </div>
                   )}
+                {record.action_type === "assignee" &&
+                  typeof record.payload?.assigneeCsvData === "string" && (
+                    <div>
+                      <p className={cn("text-xs uppercase tracking-[0.3em]", subtleText)}>
+                        Arquivo de carga
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                        <span>
+                          {record.payload?.assigneeCsvFileName ?? "template de carga"}
+                        </span>
+                        <a
+                          href={`data:text/csv;charset=utf-8,${encodeURIComponent(
+                            record.payload?.assigneeCsvData ?? ""
+                          )}`}
+                          download={record.payload?.assigneeCsvFileName ?? "assignee-bulk.csv"}
+                          className={cn(
+                            "rounded-full border px-3 py-1 text-xs font-semibold",
+                            isDark
+                              ? "border-white/10 text-zinc-200"
+                              : "border-slate-200 text-slate-700"
+                          )}
+                        >
+                          Baixar arquivo
+                        </a>
+                      </div>
+                    </div>
+                  )}
               </div>
               {record.action_type === "fields" &&
                 Array.isArray(record.payload?.fields) && (

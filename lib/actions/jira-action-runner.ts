@@ -10,6 +10,7 @@ import {
   listQueuedActionExecutionJobs,
   getRunningJobsCount,
 } from "@/lib/actions/action-job-service";
+import { ASSIGNEE_CUSTOM_FIELDS, normalizeAssigneeLabel } from "@/lib/actions/assignee-fields";
 
 const DEFAULT_MAX_JIRA_RESULTS = 200;
 const DEFAULT_MAX_PARALLEL_JOBS = 3;
@@ -23,6 +24,8 @@ type JiraConfig = {
 type ActionPayload = {
   comment?: string;
   customFields?: Array<{ id?: string; value?: string; mode?: string }>;
+  assigneeCsvData?: string;
+  assigneeCsvFileName?: string;
 };
 
 class JiraApiError extends Error {
@@ -60,6 +63,108 @@ function parseIssueIds(raw: string) {
     .split(/[\s,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseCsvRows(raw: string) {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  const pushCell = () => {
+    row.push(current);
+    current = "";
+  };
+
+  const pushRow = () => {
+    if (row.length === 0) return;
+    if (row.every((cell) => !cell.trim())) {
+      row = [];
+      return;
+    }
+    rows.push(row);
+    row = [];
+  };
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    const next = raw[index + 1];
+    if (char === "\"") {
+      if (inQuotes && next === "\"") {
+        current += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      pushCell();
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") {
+        index += 1;
+      }
+      pushCell();
+      pushRow();
+      continue;
+    }
+    current += char;
+  }
+  pushCell();
+  pushRow();
+  return rows;
+}
+
+function parseAssigneeBulkCsv(raw: string) {
+  const rows = parseCsvRows(raw);
+  if (!rows.length) {
+    throw new JiraApiError("O arquivo de carga está vazio.", 400);
+  }
+  const header = rows[0].map((cell) => cell.trim());
+  const normalizedHeader = header.map((cell) => normalizeAssigneeLabel(cell));
+  const idIndex = normalizedHeader.findIndex((cell) => cell === "id" || cell === "ids");
+  if (idIndex === -1 || idIndex !== 0) {
+    throw new JiraApiError("A coluna ID deve ser a primeira do template.", 400);
+  }
+  const labelToId = new Map(
+    ASSIGNEE_CUSTOM_FIELDS.map((field) => [
+      normalizeAssigneeLabel(field.label),
+      field.id,
+    ])
+  );
+  const fieldIndexes = normalizedHeader
+    .map((cell, index) => {
+      const fieldId = labelToId.get(cell);
+      return fieldId ? { index, fieldId } : null;
+    })
+    .filter((item): item is { index: number; fieldId: string } => item !== null);
+  if (!fieldIndexes.length) {
+    throw new JiraApiError("Nenhuma coluna de responsável foi reconhecida.", 400);
+  }
+
+  const entries: Array<{ issueKey: string; fields: Record<string, unknown> }> = [];
+  rows.slice(1).forEach((row) => {
+    const issueKey = (row[idIndex] ?? "").trim();
+    if (!issueKey) return;
+    const fields: Record<string, unknown> = {};
+    fieldIndexes.forEach(({ index, fieldId }) => {
+      const rawValue = row[index];
+      const value = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (!value) return;
+      if (value === "<limpar>") {
+        fields[fieldId] = null;
+        return;
+      }
+      fields[fieldId] = value;
+    });
+    entries.push({ issueKey, fields });
+  });
+  if (!entries.length) {
+    throw new JiraApiError("Nenhum ID válido foi identificado no arquivo.", 400);
+  }
+  return entries;
 }
 
 function parsePayload(raw: string | null) {
@@ -334,13 +439,23 @@ export async function executeActionJob(jobId: number, requestId: number) {
     ? Math.max(1, Math.floor(maxResultsSetting))
     : DEFAULT_MAX_JIRA_RESULTS;
   let issueKeys: string[] = [];
+  let bulkFieldsByIssue: Map<string, Record<string, unknown>> | null = null;
   try {
-    issueKeys = await getIssueKeys(
-      jiraConfig,
-      targetRequest.filter_mode,
-      targetRequest.filter_value,
-      maxResultsLimit
-    );
+    if (targetRequest.action_type === "assignee" && targetRequest.filter_mode === "bulk") {
+      const payload = parsePayload(targetRequest.payload);
+      const entries = parseAssigneeBulkCsv(payload?.assigneeCsvData ?? "");
+      bulkFieldsByIssue = new Map(
+        entries.map((entry) => [entry.issueKey, entry.fields])
+      );
+      issueKeys = Array.from(bulkFieldsByIssue.keys());
+    } else {
+      issueKeys = await getIssueKeys(
+        jiraConfig,
+        targetRequest.filter_mode,
+        targetRequest.filter_value,
+        maxResultsLimit
+      );
+    }
   } catch (err) {
     if (err instanceof JiraApiError) {
       updateJobStatus({ id: jobId, status: "failed", errorMessage: err.message });
@@ -369,23 +484,33 @@ export async function executeActionJob(jobId: number, requestId: number) {
         }
         await transitionIssue(jiraConfig, key, targetStatus);
       } else if (targetRequest.action_type === "assignee") {
-        const payload = parsePayload(targetRequest.payload);
-        const fields: Record<string, unknown> = {};
-        (payload?.customFields ?? []).forEach((field) => {
-          const fieldId = field.id?.trim();
-          if (!fieldId) return;
-          if (field.mode === "clear") {
-            fields[fieldId] = null;
-            return;
+        if (targetRequest.filter_mode === "bulk") {
+          const fields = bulkFieldsByIssue?.get(key) ?? {};
+          if (!Object.keys(fields).length) {
+            processedCount += 1;
+            updateJobProgress({ id: jobId, processedIssues: processedCount });
+            continue;
           }
-          if (field.value !== undefined) {
-            fields[fieldId] = field.value;
+          await updateIssueFields(jiraConfig, key, fields);
+        } else {
+          const payload = parsePayload(targetRequest.payload);
+          const fields: Record<string, unknown> = {};
+          (payload?.customFields ?? []).forEach((field) => {
+            const fieldId = field.id?.trim();
+            if (!fieldId) return;
+            if (field.mode === "clear") {
+              fields[fieldId] = null;
+              return;
+            }
+            if (field.value !== undefined) {
+              fields[fieldId] = field.value;
+            }
+          });
+          if (!Object.keys(fields).length) {
+            throw new JiraApiError("", 400);
           }
-        });
-        if (!Object.keys(fields).length) {
-          throw new JiraApiError("", 400);
+          await updateIssueFields(jiraConfig, key, fields);
         }
-        await updateIssueFields(jiraConfig, key, fields);
       } else if (targetRequest.action_type === "comment") {
         const payload = parsePayload(targetRequest.payload);
         const comment = payload?.comment?.trim();

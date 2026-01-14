@@ -32,7 +32,7 @@ const initialFieldCatalog = jiraFieldsJson as JiraField[];
 
 type ActionFormProps = {
   selectedAction: string | null;
-  filterMode: "jql" | "ids";
+  filterMode: "jql" | "ids" | "bulk";
   filterValue: string;
   projectValue: string;
   statusValue: string;
@@ -44,7 +44,7 @@ type ActionFormProps = {
   isSubmitting: boolean;
   error: string | null;
   message: string | null;
-  onFilterModeChange: (mode: "jql" | "ids") => void;
+  onFilterModeChange: (mode: "jql" | "ids" | "bulk") => void;
   onFilterValueChange: (value: string) => void;
   onProjectChange: (value: string) => void;
   onStatusChange: (value: string) => void;
@@ -58,10 +58,13 @@ type ActionFormProps = {
   onSimulateCount: () => void;
   onSubmit: () => void;
   onImportIdsFromFile: (content: string, fileName: string) => void;
+  onImportAssigneeCsv: (content: string, fileName: string) => void;
+  assigneeCsvFileName: string | null;
   uploadedFileName: string | null;
   projectOptions: Array<{ value: string; label: string }>;
   csvTemplateUrl: string;
   idsTemplateUrl: string;
+  assigneeCsvTemplateUrl: string;
 };
 
 type FieldBlockProps = {
@@ -112,10 +115,13 @@ export function ActionForm(props: ActionFormProps) {
     onSimulateCount,
     onSubmit,
     onImportIdsFromFile,
+    onImportAssigneeCsv,
+    assigneeCsvFileName,
     uploadedFileName,
     projectOptions,
     csvTemplateUrl,
     idsTemplateUrl,
+    assigneeCsvTemplateUrl,
   } = props;
 
   const isEscalate = selectedAction === "escalate";
@@ -137,9 +143,14 @@ export function ActionForm(props: ActionFormProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const idsFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bulkFileInputRef = useRef<HTMLInputElement | null>(null);
   const catalogFileInputRef = useRef<HTMLInputElement | null>(null);
   const fieldSuggestionsId = "jira-field-suggestions";
   const shouldShowFieldSuggestions = selectedAction === "fields" || isEscalate;
+  const assigneeBulkLabels = useMemo(
+    () => assigneeFields.map((field) => field.label).filter(Boolean),
+    [assigneeFields]
+  );
   const typeFilterOptions = [
     { id: "all", label: "Todos" },
     { id: "string", label: "Texto" },
@@ -265,6 +276,21 @@ export function ActionForm(props: ActionFormProps) {
       onImportIdsFromFile(text, file.name);
       if (idsFileInputRef.current) {
         idsFileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function handleBulkFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      onImportAssigneeCsv(text, file.name);
+      if (bulkFileInputRef.current) {
+        bulkFileInputRef.current.value = "";
       }
     };
     reader.readAsText(file);
@@ -463,6 +489,32 @@ export function ActionForm(props: ActionFormProps) {
           </FieldBlock>
         );
       case "assignee":
+        if (filterMode === "bulk") {
+          return (
+            <>
+              <div
+                className={cn(
+                  "rounded-2xl border p-4 text-sm",
+                  isDark
+                    ? "border-white/10 bg-white/5"
+                    : "border-slate-200 bg-slate-50"
+                )}
+              >
+                <p className={cn("text-xs font-semibold uppercase tracking-[0.3em]", labelColor)}>
+                  Carga por arquivo
+                </p>
+                <p className={cn("mt-2 text-sm", subtleText)}>
+                  As alterações serão aplicadas linha a linha conforme o CSV. Cada ID pode ter
+                  valores diferentes por campo.
+                </p>
+              </div>
+              <p className={cn("text-[11px]", subtleText)}>
+                Deixe em branco para não alterar o campo. Use &lt;limpar&gt; para limpar a
+                informação.
+              </p>
+            </>
+          );
+        }
         return (
           <>
             <div className="space-y-4">
@@ -555,9 +607,13 @@ export function ActionForm(props: ActionFormProps) {
                       [
                         "customfield_10647",
                         "customfield_13200",
+                        "customfield_13201",
                         "customfield_13202",
+                        "customfield_13203",
                         "customfield_13205",
+                        "customfield_13204",
                         "customfield_12301",
+                        "customfield_12302",
                       ].includes(field.id)
                     )
                     .map((field) => (
@@ -1039,94 +1095,185 @@ export function ActionForm(props: ActionFormProps) {
         >
           IDs
         </Button>
-      </div>
-      <Textarea
-        className={textareaClasses}
-        placeholder={
-          filterMode === "jql"
-            ? selectedAction === "assignee"
-              ? 'project = ASSETN AND status in ("To Do","In Progress")'
-              : 'Ex: project = POSTURA AND status in ("To Do","In Progress")'
-            : selectedAction === "assignee"
-            ? "ASSETN-123, ASSETN-456"
-            : "ISSUE-1, ISSUE-2, ISSUE-3"
-        }
-        value={filterValue}
-        onChange={(event) => onFilterValueChange(event.target.value)}
-      />
-      {filterMode === "jql" && (
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        {selectedAction === "assignee" && (
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            className="rounded-2xl text-xs"
-            disabled={isCheckingCount || !filterValue.trim()}
-            onClick={onSimulateCount}
+            variant="ghost"
+            onClick={() => onFilterModeChange("bulk")}
+            className={cn(
+              "flex-1 rounded-2xl text-xs",
+              filterMode === "bulk"
+                ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg"
+                : cn(
+                    "border bg-transparent",
+                    isDark
+                      ? "border-zinc-700 text-zinc-300"
+                      : "border-slate-300 text-slate-600"
+                  )
+            )}
           >
-            {isCheckingCount ? "Consultando..." : "Estimar quantidade"}
+            Carga
           </Button>
-          {issuesCount !== null && !isCheckingCount && (
-            <span className={cn("text-xs", subtleText)}>
-              {issuesCount} issues serão impactadas (simulado)
-            </span>
-          )}
-        </div>
-      )}
-      <p className={cn("text-[11px]", subtleText)}>
-        {filterMode === "jql"
-          ? selectedAction === "assignee"
-            ? "A consulta já deve iniciar com project = ASSETN."
-            : "Adicione uma consulta JQL completa para selecionar as issues."
-          : selectedAction === "assignee"
-          ? "Informe apenas IDs iniciados com ASSETN-, separados por vírgula ou quebra de linha."
-          : "Informe os IDs separados por vírgula ou quebra de linha."}
-      </p>
-      {filterMode === "ids" && (
+        )}
+      </div>
+      {filterMode === "bulk" && selectedAction === "assignee" ? (
         <div
           className={cn(
-            "mt-2 rounded-2xl border border-dashed p-3",
+            "mt-3 rounded-2xl border border-dashed p-4",
             isDark
               ? "border-purple-500/40 bg-purple-500/5"
               : "border-purple-200 bg-purple-50"
           )}
         >
-          <label
-            className={cn(
-              "flex cursor-pointer flex-col items-center gap-2 text-xs",
-              isDark ? "text-purple-200" : "text-purple-700"
+          <p className={cn("text-xs font-semibold", isDark ? "text-purple-200" : "text-purple-700")}>
+            Template de carga por ID
+          </p>
+          <p className={cn("mt-1 text-[11px]", subtleText)}>
+            Preencha a coluna ID e as colunas de áreas/owners. Deixe em branco para não alterar e use
+            &lt;limpar&gt; para limpar.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-400">
+            {assigneeBulkLabels.slice(0, 6).map((label) => (
+              <span
+                key={label}
+                className={cn(
+                  "rounded-full border px-2 py-0.5",
+                  isDark ? "border-white/10" : "border-slate-200"
+                )}
+              >
+                {label}
+              </span>
+            ))}
+            {assigneeBulkLabels.length > 6 && (
+              <span className={cn("text-[11px]", subtleText)}>
+                +{assigneeBulkLabels.length - 6} colunas
+              </span>
             )}
-          >
-            <span className="rounded-full border border-purple-400/40 px-3 py-1">
-              Anexar arquivo com IDs
-            </span>
-            <span className={cn("text-[11px]", subtleText)}>
-              Aceitamos .txt ou .csv com um ID por linha.
-            </span>
-            <input
-              type="file"
-              accept=".txt,.csv"
-              className="hidden"
-              ref={idsFileInputRef}
-              onChange={handleDataFileChange}
-            />
-          </label>
-          <a
-            href={idsTemplateUrl}
-            download
-            className={cn(
-              "mt-3 inline-flex items-center justify-center rounded-xl px-3 py-1 text-[11px] font-semibold",
-              isDark ? "bg-white/10 text-white" : "bg-white text-purple-700 shadow"
-            )}
-          >
-            Baixar template de IDs
-          </a>
-          {uploadedFileName && (
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label
+              className={cn(
+                "flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-xs",
+                isDark ? "border-purple-400/40 text-purple-200" : "border-purple-300 text-purple-700"
+              )}
+            >
+              <span>Anexar arquivo CSV</span>
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                ref={bulkFileInputRef}
+                onChange={handleBulkFileChange}
+              />
+            </label>
+            <a
+              href={assigneeCsvTemplateUrl}
+              download
+              className={cn(
+                "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold",
+                isDark ? "bg-white/10 text-white" : "bg-white text-purple-700 shadow"
+              )}
+            >
+              Baixar template de carga
+            </a>
+          </div>
+          {assigneeCsvFileName && (
             <p className={cn("mt-2 text-[11px]", subtleText)}>
-              Arquivo enviado: {uploadedFileName}
+              Arquivo enviado: {assigneeCsvFileName}
             </p>
           )}
         </div>
+      ) : (
+        <>
+          <Textarea
+            className={textareaClasses}
+            placeholder={
+              filterMode === "jql"
+                ? selectedAction === "assignee"
+                  ? 'project = ASSETN AND status in ("To Do","In Progress")'
+                  : 'Ex: project = POSTURA AND status in ("To Do","In Progress")'
+                : selectedAction === "assignee"
+                ? "ASSETN-123, ASSETN-456"
+                : "ISSUE-1, ISSUE-2, ISSUE-3"
+            }
+            value={filterValue}
+            onChange={(event) => onFilterValueChange(event.target.value)}
+          />
+          {filterMode === "jql" && (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-2xl text-xs"
+                disabled={isCheckingCount || !filterValue.trim()}
+                onClick={onSimulateCount}
+              >
+                {isCheckingCount ? "Consultando..." : "Estimar quantidade"}
+              </Button>
+              {issuesCount !== null && !isCheckingCount && (
+                <span className={cn("text-xs", subtleText)}>
+                  {issuesCount} issues serão impactadas (simulado)
+                </span>
+              )}
+            </div>
+          )}
+          <p className={cn("text-[11px]", subtleText)}>
+            {filterMode === "jql"
+              ? selectedAction === "assignee"
+                ? "A consulta já deve iniciar com project = ASSETN."
+                : "Adicione uma consulta JQL completa para selecionar as issues."
+              : selectedAction === "assignee"
+              ? "Informe apenas IDs iniciados com ASSETN-, separados por vírgula ou quebra de linha."
+              : "Informe os IDs separados por vírgula ou quebra de linha."}
+          </p>
+          {filterMode === "ids" && (
+            <div
+              className={cn(
+                "mt-2 rounded-2xl border border-dashed p-3",
+                isDark
+                  ? "border-purple-500/40 bg-purple-500/5"
+                  : "border-purple-200 bg-purple-50"
+              )}
+            >
+              <label
+                className={cn(
+                  "flex cursor-pointer flex-col items-center gap-2 text-xs",
+                  isDark ? "text-purple-200" : "text-purple-700"
+                )}
+              >
+                <span className="rounded-full border border-purple-400/40 px-3 py-1">
+                  Anexar arquivo com IDs
+                </span>
+                <span className={cn("text-[11px]", subtleText)}>
+                  Aceitamos .txt ou .csv com um ID por linha.
+                </span>
+                <input
+                  type="file"
+                  accept=".txt,.csv"
+                  className="hidden"
+                  ref={idsFileInputRef}
+                  onChange={handleDataFileChange}
+                />
+              </label>
+              <a
+                href={idsTemplateUrl}
+                download
+                className={cn(
+                  "mt-3 inline-flex items-center justify-center rounded-xl px-3 py-1 text-[11px] font-semibold",
+                  isDark ? "bg-white/10 text-white" : "bg-white text-purple-700 shadow"
+                )}
+              >
+                Baixar template de IDs
+              </a>
+              {uploadedFileName && (
+                <p className={cn("mt-2 text-[11px]", subtleText)}>
+                  Arquivo enviado: {uploadedFileName}
+                </p>
+              )}
+            </div>
+          )}
+        </>
       )}
     </FieldBlock>
   );

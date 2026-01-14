@@ -18,6 +18,8 @@ type ActionField = { key: string; value: string };
 
 type ActionPayload = {
   customFields?: Array<{ id?: string; label?: string; value?: string; mode?: string }>;
+  assigneeCsvData?: string;
+  assigneeCsvFileName?: string;
   comment?: string;
   fields?: ActionField[];
   projectKey?: string;
@@ -173,12 +175,30 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
         );
       case "assignee": {
         const customFields = request.payload?.customFields ?? [];
+        const bulkCsvData = request.payload?.assigneeCsvData;
+        const bulkCsvName = request.payload?.assigneeCsvFileName;
         return (
           <div className={shellClass}>
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
               Campos de responsável
             </p>
-            {customFields.length === 0 ? (
+            {bulkCsvData ? (
+              <div className="mt-2 space-y-2 text-sm">
+                <p>Arquivo de carga: {bulkCsvName ?? "template de carga"}</p>
+                <a
+                  href={`data:text/csv;charset=utf-8,${encodeURIComponent(bulkCsvData)}`}
+                  download={bulkCsvName ?? "assignee-bulk.csv"}
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-xl border px-3 py-1 text-xs font-semibold",
+                    isDark
+                      ? "border-white/10 text-zinc-200"
+                      : "border-slate-200 text-slate-700"
+                  )}
+                >
+                  Baixar arquivo enviado
+                </a>
+              </div>
+            ) : customFields.length === 0 ? (
               <p className="mt-2 text-sm">Nenhuma alteração informada.</p>
             ) : (
               <div className="mt-2 space-y-2 text-sm">

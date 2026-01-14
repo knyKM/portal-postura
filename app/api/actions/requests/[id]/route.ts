@@ -15,6 +15,8 @@ type ResubmitPayload = {
   filterValue?: string;
   requestedStatus?: string;
   assigneeFields?: Array<{ id?: string; label?: string; value?: string; mode?: string }>;
+  assigneeCsvData?: string;
+  assigneeCsvFileName?: string;
   comment?: string;
   fields?: Array<{ key: string; value: string }>;
   projectKey?: string;
@@ -125,8 +127,18 @@ export async function PATCH(
       );
     }
   } else {
-    if (!filterMode || !["jql", "ids"].includes(filterMode)) {
-      return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
+    const allowedFilterModes =
+      actionType === "assignee" ? ["jql", "ids", "bulk"] : ["jql", "ids"];
+    if (!filterMode || !allowedFilterModes.includes(filterMode)) {
+      return NextResponse.json(
+        {
+          error:
+            actionType === "assignee"
+              ? "Filtro inválido. Escolha entre JQL, IDs ou Carga."
+              : "Filtro inválido.",
+        },
+        { status: 400 }
+      );
     }
 
     if (!filterValue) {
@@ -145,15 +157,30 @@ export async function PATCH(
       return NextResponse.json({ error: "Status inválido." }, { status: 400 });
     }
   } else if (actionType === "assignee") {
-    const customFields = (body?.assigneeFields ?? [])
-      .map((field) => ({
-        id: field?.id?.trim() ?? "",
-        label: field?.label?.trim() ?? "",
-        value: field?.value?.trim() ?? "",
-        mode: field?.mode?.trim() ?? "set",
-      }))
-      .filter((field) => field.id && (field.value || field.mode === "clear"));
-    payload = customFields.length ? { customFields } : null;
+    const assigneeCsvData = body?.assigneeCsvData?.trim();
+    const assigneeCsvFileName = body?.assigneeCsvFileName?.trim();
+    if (filterMode === "bulk") {
+      if (!assigneeCsvData) {
+        return NextResponse.json(
+          { error: "Envie o arquivo de carga para continuar." },
+          { status: 400 }
+        );
+      }
+      payload = {
+        assigneeCsvData,
+        assigneeCsvFileName: assigneeCsvFileName || undefined,
+      };
+    } else {
+      const customFields = (body?.assigneeFields ?? [])
+        .map((field) => ({
+          id: field?.id?.trim() ?? "",
+          label: field?.label?.trim() ?? "",
+          value: field?.value?.trim() ?? "",
+          mode: field?.mode?.trim() ?? "set",
+        }))
+        .filter((field) => field.id && (field.value || field.mode === "clear"));
+      payload = customFields.length ? { customFields } : null;
+    }
   } else if (actionType === "comment") {
     const comment = body?.comment?.trim();
     if (!comment) {
