@@ -52,8 +52,19 @@ type SecurityLevel = {
   key: string;
   name: string;
   description: string | null;
+  allowedRoutes?: string[];
   createdAt: string;
 };
+
+const securityRouteOptions = [
+  { label: "Ações", value: "/acoes" },
+  { label: "Playbooks", value: "/playbooks" },
+  { label: "Ferramentas", value: "/ferramentas" },
+  { label: "Auditoria", value: "/auditoria" },
+  { label: "Sugestões", value: "/sugestoes" },
+  { label: "Fila de Aprovações", value: "/fila-aprovacoes" },
+  { label: "Usuários", value: "/usuarios" },
+];
 
 function generatePassword() {
   const charset =
@@ -96,6 +107,15 @@ export default function UsuariosPage() {
   const [levelsError, setLevelsError] = useState<string | null>(null);
   const [newLevelName, setNewLevelName] = useState("");
   const [newLevelDescription, setNewLevelDescription] = useState("");
+  const [newLevelRoutes, setNewLevelRoutes] = useState<string[]>(
+    securityRouteOptions.map((option) => option.value)
+  );
+  const [editingLevelKey, setEditingLevelKey] = useState<string | null>(null);
+  const [editingLevelName, setEditingLevelName] = useState("");
+  const [editingLevelDescription, setEditingLevelDescription] = useState("");
+  const [editingLevelRoutes, setEditingLevelRoutes] = useState<string[]>([]);
+  const [deletingLevelKey, setDeletingLevelKey] = useState<string | null>(null);
+  const [editingLevelLoading, setEditingLevelLoading] = useState(false);
   const [creatingLevel, setCreatingLevel] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
@@ -195,6 +215,11 @@ export default function UsuariosPage() {
       .finally(() => setLevelsLoading(false));
   }, [loadingRole, accessDenied, currentRole]);
 
+  useEffect(() => {
+    if (!isSecurityModalOpen) return;
+    setNewLevelRoutes(securityRouteOptions.map((option) => option.value));
+  }, [isSecurityModalOpen]);
+
   function handleGeneratePassword() {
     const newPassword = generatePassword();
     setPassword(newPassword);
@@ -272,6 +297,7 @@ export default function UsuariosPage() {
         body: JSON.stringify({
           name: newLevelName,
           description: newLevelDescription,
+          allowedRoutes: newLevelRoutes,
         }),
       });
       const data = await response.json().catch(() => null);
@@ -284,6 +310,7 @@ export default function UsuariosPage() {
         setSecurityLevel(created.key);
         setNewLevelName("");
         setNewLevelDescription("");
+        setNewLevelRoutes(securityRouteOptions.map((option) => option.value));
       }
     } catch (err) {
       setLevelsError(
@@ -291,6 +318,70 @@ export default function UsuariosPage() {
       );
     } finally {
       setCreatingLevel(false);
+    }
+  }
+
+  async function handleUpdateSecurityLevel(event: FormEvent) {
+    event.preventDefault();
+    if (!editingLevelKey || editingLevelLoading) return;
+    setLevelsError(null);
+    setEditingLevelLoading(true);
+    try {
+      const response = await fetch("/api/security-levels", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: editingLevelKey,
+          name: editingLevelName,
+          description: editingLevelDescription,
+          allowedRoutes: editingLevelRoutes,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao atualizar nível.");
+      }
+      const updated = data?.level as SecurityLevel | undefined;
+      if (updated) {
+        setSecurityLevels((prev) =>
+          prev.map((level) => (level.key === updated.key ? updated : level))
+        );
+      }
+      setEditingLevelKey(null);
+      setEditingLevelName("");
+      setEditingLevelDescription("");
+      setEditingLevelRoutes([]);
+    } catch (err) {
+      setLevelsError(
+        err instanceof Error ? err.message : "Não foi possível atualizar nível."
+      );
+    } finally {
+      setEditingLevelLoading(false);
+    }
+  }
+
+  async function handleDeleteSecurityLevel(key: string) {
+    if (editingLevelLoading) return;
+    setLevelsError(null);
+    setEditingLevelLoading(true);
+    try {
+      const response = await fetch("/api/security-levels", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao excluir nível.");
+      }
+      setSecurityLevels((prev) => prev.filter((level) => level.key !== key));
+      setDeletingLevelKey(null);
+    } catch (err) {
+      setLevelsError(
+        err instanceof Error ? err.message : "Não foi possível excluir nível."
+      );
+    } finally {
+      setEditingLevelLoading(false);
     }
   }
 
@@ -1143,6 +1234,44 @@ export default function UsuariosPage() {
                       />
                     </div>
                     <div className="md:col-span-3">
+                      <p className="text-xs font-semibold text-zinc-400">
+                        Módulos permitidos
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        Dashboard, Configurações, Changelog e Manual são liberados para todos.
+                      </p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {securityRouteOptions.map((option) => {
+                          const checked = newLevelRoutes.includes(option.value);
+                          return (
+                            <label
+                              key={option.value}
+                              className={cn(
+                                "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs",
+                                isDark
+                                  ? "border-white/10 bg-white/5 text-zinc-200"
+                                  : "border-slate-200 bg-white text-slate-700"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={creatingLevel}
+                                onChange={() =>
+                                  setNewLevelRoutes((prev) =>
+                                    checked
+                                      ? prev.filter((value) => value !== option.value)
+                                      : [...prev, option.value]
+                                  )
+                                }
+                              />
+                              <span>{option.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="md:col-span-3">
                       <Button
                         type="submit"
                         disabled={creatingLevel}
@@ -1152,6 +1281,98 @@ export default function UsuariosPage() {
                       </Button>
                     </div>
                   </form>
+                  {editingLevelKey && (
+                    <form
+                      onSubmit={handleUpdateSecurityLevel}
+                      className="mt-6 grid gap-3 md:grid-cols-3"
+                    >
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-zinc-400">
+                          Editando nível
+                        </label>
+                        <Input value={editingLevelKey} disabled />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-zinc-400">
+                          Nome
+                        </label>
+                        <Input
+                          value={editingLevelName}
+                          onChange={(event) => setEditingLevelName(event.target.value)}
+                          disabled={editingLevelLoading}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-1">
+                        <label className="text-xs font-semibold text-zinc-400">
+                          Descrição
+                        </label>
+                        <Input
+                          value={editingLevelDescription}
+                          onChange={(event) =>
+                            setEditingLevelDescription(event.target.value)
+                          }
+                          disabled={editingLevelLoading}
+                        />
+                      </div>
+                      <div className="md:col-span-3">
+                        <p className="text-xs font-semibold text-zinc-400">
+                          Módulos permitidos
+                        </p>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {securityRouteOptions.map((option) => {
+                            const checked = editingLevelRoutes.includes(option.value);
+                            return (
+                              <label
+                                key={option.value}
+                                className={cn(
+                                  "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs",
+                                  isDark
+                                    ? "border-white/10 bg-white/5 text-zinc-200"
+                                    : "border-slate-200 bg-white text-slate-700"
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={editingLevelLoading}
+                                  onChange={() =>
+                                    setEditingLevelRoutes((prev) =>
+                                      checked
+                                        ? prev.filter((value) => value !== option.value)
+                                        : [...prev, option.value]
+                                    )
+                                  }
+                                />
+                                <span>{option.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="md:col-span-3 flex flex-wrap gap-2">
+                        <Button
+                          type="submit"
+                          disabled={editingLevelLoading}
+                          className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-sm font-semibold text-white"
+                        >
+                          {editingLevelLoading ? "Atualizando..." : "Salvar alterações"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingLevelKey(null);
+                            setEditingLevelName("");
+                            setEditingLevelDescription("");
+                            setEditingLevelRoutes([]);
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </form>
+                  )}
                   <div
                     className={cn(
                       "grid gap-3 md:grid-cols-3",
@@ -1168,12 +1389,70 @@ export default function UsuariosPage() {
                             : "border-slate-200 bg-slate-50"
                         )}
                       >
-                        <p className="text-xs uppercase tracking-[0.3em] text-sky-400">
-                          {level.name}
-                        </p>
-                        <p className="mt-1 text-sm text-zinc-400">
-                          {level.description ?? "Sem descrição cadastrada."}
-                        </p>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.3em] text-sky-400">
+                              {level.name}
+                            </p>
+                            <p className="mt-1 text-sm text-zinc-400">
+                              {level.description ?? "Sem descrição cadastrada."}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl text-[11px]"
+                              onClick={() => {
+                                setEditingLevelKey(level.key);
+                                setEditingLevelName(level.name);
+                                setEditingLevelDescription(level.description ?? "");
+                                setEditingLevelRoutes(level.allowedRoutes ?? []);
+                                setDeletingLevelKey(null);
+                              }}
+                            >
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl text-[11px] text-rose-300"
+                              onClick={() =>
+                                setDeletingLevelKey((prev) =>
+                                  prev === level.key ? null : level.key
+                                )
+                              }
+                            >
+                              Excluir
+                            </Button>
+                          </div>
+                        </div>
+                        {deletingLevelKey === level.key && (
+                          <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-100">
+                            <p>Tem certeza que deseja excluir este nível?</p>
+                            <div className="mt-2 flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="rounded-xl bg-rose-500 text-white hover:bg-rose-600"
+                                onClick={() => handleDeleteSecurityLevel(level.key)}
+                                disabled={editingLevelLoading}
+                              >
+                                Sim, excluir
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setDeletingLevelKey(null)}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

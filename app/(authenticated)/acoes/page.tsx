@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ActionForm } from "@/components/actions/action-form";
+import { ActionRequestModal } from "@/components/actions/action-request-modal";
 import { useTheme } from "@/components/theme/theme-provider";
 import {
   Workflow,
@@ -68,7 +69,23 @@ const projectOptions = [
   { value: "OPENCVE", label: "OPENCVE - CVEs Emergenciais" },
 ];
 
-const statusOptions = ["Done", "Cancelado"];
+const statusOptions = [
+  "In Analysis",
+  "Request For Risk Acceptance",
+  "Risk Accepted",
+  "In Progress",
+  "Retest Fail",
+  "Ready For Retest",
+  "In Retest",
+  "Erro",
+  "Done",
+  "Containment measure fail",
+  "Containment measure OK",
+  "Containment measure ready for retest",
+  "Containment Measure In Retest",
+  "Cancelado",
+  "Reabrir",
+];
 const assigneeProjectKey = "ASSETN";
 const assigneeJqlPrefix = `project = ${assigneeProjectKey} AND `;
 
@@ -94,7 +111,16 @@ type UserActionRequest = {
     csvData?: string;
     csvFileName?: string;
   } | null;
-  status: "pending" | "approved" | "declined" | "returned";
+  status:
+    | "pending"
+    | "approved"
+    | "declined"
+    | "returned"
+    | "queued"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled";
   audit_notes?: string | null;
   created_at: string;
   approved_at: string | null;
@@ -140,6 +166,7 @@ export default function AcoesPage() {
   const [requestsError, setRequestsError] = useState<string | null>(null);
   const [requestsRefreshKey, setRequestsRefreshKey] = useState(0);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [closedCollapsed, setClosedCollapsed] = useState(true);
   const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editSelectedAction, setEditSelectedAction] = useState<string | null>(null);
@@ -157,6 +184,10 @@ export default function AcoesPage() {
   const [editIssuesCount, setEditIssuesCount] = useState<number | null>(null);
   const [editIsCheckingCount, setEditIsCheckingCount] = useState(false);
   const [editIdsFileName, setEditIdsFileName] = useState<string | null>(null);
+  const [cancelRequestId, setCancelRequestId] = useState<number | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [detailsRequestId, setDetailsRequestId] = useState<number | null>(null);
   const cardClasses = cn(
     "rounded-3xl border",
     isDark ? "border-zinc-800 bg-[#050816]/80" : "border-slate-200 bg-white"
@@ -436,17 +467,28 @@ export default function AcoesPage() {
 
   async function handleSimulateCount() {
     if (filterMode !== "jql") return;
-    if (!filterValue.trim()) {
+    const jql = filterValue.trim();
+    if (!jql) {
       setError("Escreva uma JQL antes de estimar a quantidade.");
       return;
     }
     setError(null);
     setMessage(null);
     setIsCheckingCount(true);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    const fakeNumber = 42 + Math.floor(Math.random() * 80);
-    setIssuesCount(fakeNumber);
-    setIsCheckingCount(false);
+    try {
+      const response = await fetch(
+        `/api/actions/jql-count?jql=${encodeURIComponent(jql)}`
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "");
+      }
+      setIssuesCount(typeof data?.total === "number" ? data.total : 0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "");
+    } finally {
+      setIsCheckingCount(false);
+    }
   }
 
   function triggerRequestsRefresh() {
@@ -530,6 +572,13 @@ export default function AcoesPage() {
             ? "border-rose-500/50 bg-rose-500/10 text-rose-300"
             : "border-rose-200 bg-rose-50 text-rose-700",
         };
+      case "cancelled":
+        return {
+          label: "Cancelado",
+          className: isDark
+            ? "border-slate-500/50 bg-slate-500/10 text-slate-300"
+            : "border-slate-200 bg-slate-50 text-slate-700",
+        };
       case "returned":
         return {
           label: "Devolvido",
@@ -610,6 +659,103 @@ export default function AcoesPage() {
       pageSubtitle="Automação de incidentes e integrações Jira"
     >
       <div className="flex w-full flex-col gap-6 px-4 lg:px-10">
+        {cancelRequestId !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div
+              className={cn(
+                "w-full max-w-md rounded-3xl border p-5",
+                isDark ? "border-zinc-800 bg-[#050816]" : "border-slate-200 bg-white"
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                    Cancelar chamado
+                  </p>
+                  <h3 className="text-lg font-semibold">
+                    Tem certeza que deseja encerrar?
+                  </h3>
+                  <p
+                    className={cn(
+                      "mt-1 text-xs",
+                      isDark ? "text-zinc-500" : "text-slate-500"
+                    )}
+                  >
+                    A solicitação #{cancelRequestId} será movida para encerradas.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setCancelRequestId(null);
+                    setCancelError(null);
+                  }}
+                >
+                  Fechar
+                </Button>
+              </div>
+              {cancelError && (
+                <div
+                  className={cn(
+                    "mt-4 rounded-2xl border px-4 py-3 text-xs",
+                    isDark
+                      ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                      : "border-rose-200 bg-rose-50 text-rose-700"
+                  )}
+                >
+                  {cancelError}
+                </div>
+              )}
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setCancelRequestId(null);
+                    setCancelError(null);
+                  }}
+                >
+                  Não
+                </Button>
+                <Button
+                  type="button"
+                  className="rounded-xl bg-rose-500 text-white hover:bg-rose-600"
+                  disabled={isCancelling}
+                  onClick={async () => {
+                    if (!cancelRequestId) return;
+                    setIsCancelling(true);
+                    setCancelError(null);
+                    try {
+                      const response = await fetch(
+                        `/api/actions/requests/${cancelRequestId}`,
+                        {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ action: "cancel" }),
+                        }
+                      );
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        throw new Error(data?.error || "Não foi possível cancelar.");
+                      }
+                      setCancelRequestId(null);
+                      triggerRequestsRefresh();
+                    } catch (err) {
+                      setCancelError(
+                        err instanceof Error ? err.message : "Não foi possível cancelar."
+                      );
+                    } finally {
+                      setIsCancelling(false);
+                    }
+                  }}
+                >
+                  {isCancelling ? "Cancelando..." : "Sim, cancelar"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
         {isEditModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
             <div
@@ -711,14 +857,29 @@ export default function AcoesPage() {
                     })
                   }
                   onSimulateCount={async () => {
-                    if (editFilterMode !== "jql" || !editFilterValue.trim()) {
+                    if (editFilterMode !== "jql") return;
+                    const jql = editFilterValue.trim();
+                    if (!jql) {
+                      setError("Escreva uma JQL antes de estimar a quantidade.");
                       return;
                     }
                     setEditIsCheckingCount(true);
-                    await new Promise((resolve) => setTimeout(resolve, 700));
-                    const fakeNumber = 42 + Math.floor(Math.random() * 80);
-                    setEditIssuesCount(fakeNumber);
-                    setEditIsCheckingCount(false);
+                    try {
+                      const response = await fetch(
+                        `/api/actions/jql-count?jql=${encodeURIComponent(jql)}`
+                      );
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        throw new Error(data?.error || "");
+                      }
+                      setEditIssuesCount(
+                        typeof data?.total === "number" ? data.total : 0
+                      );
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "");
+                    } finally {
+                      setEditIsCheckingCount(false);
+                    }
                   }}
                   onSubmit={handleEditSubmit}
                   onImportIdsFromFile={(content, fileName) => {
@@ -736,6 +897,10 @@ export default function AcoesPage() {
             </div>
           </div>
         )}
+        <ActionRequestModal
+          requestId={detailsRequestId}
+          onClose={() => setDetailsRequestId(null)}
+        />
         <div
           className={cn(
             "relative overflow-hidden rounded-3xl border px-6 py-6",
@@ -889,11 +1054,11 @@ export default function AcoesPage() {
         <Card className={cardClasses}>
           <CardHeader className="flex flex-row items-start justify-between">
             <div>
-              <CardTitle className="text-lg">Minhas solicitações recentes</CardTitle>
+              <CardTitle className="text-lg">Minhas solicitações em aberto</CardTitle>
               <CardDescription
                 className={cn("text-sm", isDark ? "text-zinc-500" : "text-slate-500")}
               >
-                Acompanhe o status e os motivos registrados pelo administrador.
+                Acompanhe solicitações pendentes, em fila ou devolvidas para ajuste.
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -948,15 +1113,21 @@ export default function AcoesPage() {
                 >
                   Carregando suas solicitações...
                 </p>
-              ) : myRequests.length === 0 ? (
+              ) : myRequests.filter((request) =>
+                  ["pending", "returned", "queued", "running"].includes(request.status)
+                ).length === 0 ? (
                 <p
                   className={cn("text-xs", isDark ? "text-zinc-500" : "text-slate-500")}
                 >
-                  Você ainda não enviou solicitações de ação. Use o formulário acima para registrar a primeira.
+                  Nenhuma solicitação pendente ou em execução no momento.
                 </p>
               ) : (
                 <div className="space-y-2.5">
-                  {myRequests.map((request) => {
+                  {myRequests
+                    .filter((request) =>
+                      ["pending", "returned", "queued", "running"].includes(request.status)
+                    )
+                    .map((request) => {
                     const statusInfo = getStatusInfo(request.status);
                     return (
                       <div
@@ -1043,6 +1214,34 @@ export default function AcoesPage() {
                               Editar e reenviar
                             </Button>
                           )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl text-xs"
+                            onClick={() => setDetailsRequestId(request.id)}
+                          >
+                            Detalhes do chamado
+                          </Button>
+                          {["pending", "returned"].includes(request.status) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className={cn(
+                                "rounded-xl text-xs",
+                                isDark
+                                  ? "border-rose-500/40 text-rose-200 hover:text-white"
+                                  : "border-rose-200 text-rose-600"
+                              )}
+                              onClick={() => {
+                                setCancelRequestId(request.id);
+                                setCancelError(null);
+                              }}
+                            >
+                              Cancelar chamado
+                            </Button>
+                          )}
                         </div>
                         <div
                           className={cn(
@@ -1076,6 +1275,24 @@ export default function AcoesPage() {
                           >
                             Aguardando aprovação de um administrador.
                           </p>
+                        ) : request.status === "queued" ? (
+                          <p
+                            className={cn(
+                              "mt-2 text-xs",
+                              isDark ? "text-zinc-500" : "text-slate-500"
+                            )}
+                          >
+                            Ação aprovada e em fila para execução.
+                          </p>
+                        ) : request.status === "running" ? (
+                          <p
+                            className={cn(
+                              "mt-2 text-xs",
+                              isDark ? "text-zinc-500" : "text-slate-500"
+                            )}
+                          >
+                            Ação em execução. Acompanhe o progresso na fila de execução.
+                          </p>
                         ) : (
                           <div
                             className={cn(
@@ -1098,6 +1315,162 @@ export default function AcoesPage() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
+        <Card className={cardClasses}>
+          <CardHeader className="flex flex-row items-start justify-between">
+            <div>
+              <CardTitle className="text-lg">Minhas solicitações encerradas</CardTitle>
+              <CardDescription
+                className={cn("text-sm", isDark ? "text-zinc-500" : "text-slate-500")}
+              >
+            Solicitações aprovadas, finalizadas ou canceladas ficam registradas aqui.
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="rounded-xl text-xs text-zinc-400 hover:text-zinc-100"
+                onClick={() => setClosedCollapsed((prev) => !prev)}
+              >
+                {closedCollapsed ? "Expandir" : "Recolher"}
+              </Button>
+            </div>
+          </CardHeader>
+          {!closedCollapsed && (
+            <CardContent
+              className={cn(
+                "space-y-4 text-sm",
+                isDark ? "text-zinc-300" : "text-slate-600"
+              )}
+            >
+              {isLoadingRequests ? (
+                <p
+                  className={cn("text-xs", isDark ? "text-zinc-500" : "text-slate-500")}
+                >
+                  Carregando suas solicitações...
+                </p>
+              ) : myRequests.filter((request) =>
+                  ["approved", "completed", "failed", "declined", "cancelled"].includes(
+                    request.status
+                  )
+                ).length === 0 ? (
+                <p
+                  className={cn("text-xs", isDark ? "text-zinc-500" : "text-slate-500")}
+                >
+                  Nenhuma solicitação encerrada registrada.
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {myRequests
+                    .filter((request) =>
+                      ["approved", "completed", "failed", "declined", "cancelled"].includes(
+                        request.status
+                      )
+                    )
+                    .map((request) => {
+                      const statusInfo = getStatusInfo(request.status);
+                      return (
+                        <div
+                          key={request.id}
+                          className={cn(
+                            "rounded-2xl border px-3 py-3 text-sm",
+                            isDark
+                              ? "border-zinc-700 text-zinc-300"
+                              : "border-slate-200 bg-white text-slate-600"
+                          )}
+                        >
+                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                              <p
+                                className={cn(
+                                  "text-base font-semibold",
+                                  isDark ? "text-white" : "text-slate-800"
+                                )}
+                              >
+                                {actionLabelMap[request.action_type] ?? request.action_type}
+                              </p>
+                              <p
+                                className={cn(
+                                  "text-xs",
+                                  isDark ? "text-zinc-500" : "text-slate-500"
+                                )}
+                              >
+                                #{request.id} ·{" "}
+                                {new Date(request.created_at).toLocaleString("pt-BR", {
+                                  timeZone: "America/Sao_Paulo",
+                                })}
+                              </p>
+                            </div>
+                            <span
+                              className={cn(
+                                "rounded-full border px-3 py-1 text-xs uppercase tracking-[0.2em]",
+                                statusInfo.className
+                              )}
+                            >
+                              {statusInfo.label}
+                            </span>
+                          </div>
+                          <div
+                            className={cn(
+                              "mt-2 rounded-2xl border border-dashed px-3 py-2 text-xs",
+                              isDark
+                                ? "border-zinc-700/70 text-zinc-400"
+                                : "border-slate-200 text-slate-500"
+                            )}
+                          >
+                            <p
+                              className={cn(
+                                "font-semibold",
+                                isDark ? "text-zinc-200" : "text-slate-700"
+                              )}
+                            >
+                              {getActionSummary(request)}
+                            </p>
+                            <p className="mt-1 text-[11px] uppercase tracking-[0.3em]">
+                              Conjunto ({request.filter_mode.toUpperCase()})
+                            </p>
+                            <pre className="mt-1 whitespace-pre-wrap text-[11px]">
+                              {request.filter_value}
+                            </pre>
+                          </div>
+                          <div
+                            className={cn(
+                              "mt-2 rounded-2xl border px-3 py-2 text-xs",
+                              request.status === "completed"
+                                ? isDark
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : isDark
+                                ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                            )}
+                          >
+                            <p className="font-semibold">Motivo registrado</p>
+                            <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed">
+                              {request.audit_notes ?? "Sem observações registradas."}
+                            </p>
+                          </div>
+                          <div className="mt-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl text-xs"
+                              onClick={() => setDetailsRequestId(request.id)}
+                            >
+                              Detalhes do chamado
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </CardContent>

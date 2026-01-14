@@ -145,6 +145,65 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS action_request_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    message TEXT,
+    actor_name TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(request_id) REFERENCES action_requests(id)
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS action_request_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL,
+    sender_id INTEGER,
+    sender_name TEXT,
+    sender_role TEXT,
+    message TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(request_id) REFERENCES action_requests(id)
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_action_request_events_request
+  ON action_request_events (request_id, created_at);
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_action_request_messages_request
+  ON action_request_messages (request_id, created_at);
+`);
+
+const actionMessageTableInfo = db
+  .prepare("PRAGMA table_info(action_request_messages)")
+  .all() as TableInfoRow[];
+
+const hasMessageSenderId = actionMessageTableInfo.some(
+  (column) => column.name === "sender_id"
+);
+const hasMessageSenderName = actionMessageTableInfo.some(
+  (column) => column.name === "sender_name"
+);
+const hasMessageSenderRole = actionMessageTableInfo.some(
+  (column) => column.name === "sender_role"
+);
+
+if (!hasMessageSenderId) {
+  db.exec("ALTER TABLE action_request_messages ADD COLUMN sender_id INTEGER");
+}
+if (!hasMessageSenderName) {
+  db.exec("ALTER TABLE action_request_messages ADD COLUMN sender_name TEXT");
+}
+if (!hasMessageSenderRole) {
+  db.exec("ALTER TABLE action_request_messages ADD COLUMN sender_role TEXT");
+}
+
 const actionJobTableInfo = db
   .prepare("PRAGMA table_info(action_execution_jobs)")
   .all() as TableInfoRow[];
@@ -169,9 +228,38 @@ db.exec(`
     key TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
+    allowed_routes TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+const securityLevelTableInfo = db
+  .prepare("PRAGMA table_info(security_levels)")
+  .all() as TableInfoRow[];
+
+const hasAllowedRoutesColumn = securityLevelTableInfo.some(
+  (column) => column.name === "allowed_routes"
+);
+
+if (!hasAllowedRoutesColumn) {
+  db.exec("ALTER TABLE security_levels ADD COLUMN allowed_routes TEXT");
+}
+
+const defaultAllowedRoutes = JSON.stringify([
+  "/acoes",
+  "/playbooks",
+  "/ferramentas",
+  "/auditoria",
+  "/sugestoes",
+  "/fila-aprovacoes",
+  "/usuarios",
+]);
+
+db.exec(
+  `UPDATE security_levels
+   SET allowed_routes = '${defaultAllowedRoutes}'
+   WHERE allowed_routes IS NULL OR allowed_routes = ''`
+);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS network_sensors (
@@ -222,11 +310,26 @@ const securityLevelCount = db
 
 if ((securityLevelCount?.total ?? 0) === 0) {
   const insertLevel = db.prepare(
-    "INSERT INTO security_levels (key, name, description) VALUES (?, ?, ?)"
+    "INSERT INTO security_levels (key, name, description, allowed_routes) VALUES (?, ?, ?, ?)"
   );
-  insertLevel.run("padrao", "Padrão", "Acesso base aos módulos operacionais.");
-  insertLevel.run("restrito", "Restrito", "Somente leitura e visibilidade limitada.");
-  insertLevel.run("critico", "Crítico", "Acesso completo a módulos sensíveis.");
+  insertLevel.run(
+    "padrao",
+    "Padrão",
+    "Acesso base aos módulos operacionais.",
+    defaultAllowedRoutes
+  );
+  insertLevel.run(
+    "restrito",
+    "Restrito",
+    "Somente leitura e visibilidade limitada.",
+    defaultAllowedRoutes
+  );
+  insertLevel.run(
+    "critico",
+    "Crítico",
+    "Acesso completo a módulos sensíveis.",
+    defaultAllowedRoutes
+  );
 }
 
 db.exec(`

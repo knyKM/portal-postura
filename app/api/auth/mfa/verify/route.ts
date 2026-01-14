@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAuthToken, verifyMfaToken } from "@/lib/auth/tokens";
 import { findUserById, updateUserLastSeen } from "@/lib/auth/user-service";
+import { getSecurityLevelByKey } from "@/lib/security/security-level-service";
 import { checkMfaCode } from "@/lib/auth/mfa-utils";
 
 type VerifyRequest = {
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
     role: user.role,
   });
 
+  const level = getSecurityLevelByKey(user.security_level);
   const response = NextResponse.json({
     user: {
       id: user.id,
@@ -60,6 +62,8 @@ export async function POST(request: Request) {
       name: user.name,
       avatar: user.avatar,
       role: user.role,
+      security_level: user.security_level,
+      allowed_routes: level?.allowedRoutes ?? [],
       is_active: Boolean(user.is_active),
     },
   });

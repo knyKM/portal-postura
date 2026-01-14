@@ -4,6 +4,7 @@ import {
   findUserByEmail,
   validateUserCredentials,
 } from "@/lib/auth/user-service";
+import { getSecurityLevelByKey } from "@/lib/security/security-level-service";
 
 type LoginRequest = {
   email?: string;
@@ -48,12 +49,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const level = getSecurityLevelByKey(existingUser.security_level);
   const baseUser = {
     id: user.id,
     email: user.email,
     name: user.name,
     avatar: user.avatar,
     role: user.role,
+    security_level: user.security_level,
+    allowed_routes: level?.allowedRoutes ?? [],
     is_active: Boolean(user.is_active),
   };
 

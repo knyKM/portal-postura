@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { useTheme } from "@/components/theme/theme-provider";
+import { ActionRequestModal } from "@/components/actions/action-request-modal";
 
 type ActionField = { key: string; value: string };
 
@@ -54,6 +55,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
   const [notesById, setNotesById] = useState<Record<number, string>>({});
   const [noteErrors, setNoteErrors] = useState<Record<number, string>>({});
   const [highlightedId, setHighlightedId] = useState<number | null>(null);
+  const [detailsRequestId, setDetailsRequestId] = useState<number | null>(null);
 
   const mutedText = isDark ? "text-zinc-500" : "text-slate-500";
   const surface = isDark
@@ -385,6 +387,10 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
 
   return (
     <div className="space-y-8">
+      <ActionRequestModal
+        requestId={detailsRequestId}
+        onClose={() => setDetailsRequestId(null)}
+      />
       {error && (
         <div
           className={cn(
@@ -504,6 +510,14 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
 
                     <div className="flex flex-col gap-2 md:flex-row md:justify-end">
                       <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl border-white/20 text-xs font-semibold"
+                        onClick={() => setDetailsRequestId(request.id)}
+                      >
+                        Detalhes do chamado
+                      </Button>
+                      <Button
                         variant="outline"
                         className={cn(
                           "rounded-2xl border-white/20 text-xs font-semibold",
@@ -550,7 +564,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
             Histórico recente
           </CardTitle>
           <CardDescription className={cn("text-sm", mutedText)}>
-            Tudo que já foi aprovado, declinado ou devolvido fica registrado com justificativa.
+            Tudo que já foi aprovado, declinado, devolvido ou cancelado fica registrado com justificativa.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -589,6 +603,8 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                           ? "bg-rose-500/10 text-rose-300"
                           : request.status === "returned"
                           ? "bg-amber-500/10 text-amber-300"
+                          : request.status === "cancelled"
+                          ? "bg-slate-500/10 text-slate-300"
                           : "bg-slate-500/10 text-slate-300"
                       )}
                     >
@@ -598,8 +614,19 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                         ? "Erro"
                         : request.status === "returned"
                         ? "Devolvido"
+                        : request.status === "cancelled"
+                        ? "Cancelado"
                         : "Declinado"}
                     </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="relative z-10 rounded-xl text-[11px]"
+                      onClick={() => setDetailsRequestId(request.id)}
+                    >
+                      Detalhes do chamado
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"

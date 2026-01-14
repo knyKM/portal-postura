@@ -428,7 +428,23 @@ export function ActionForm(props: ActionFormProps) {
                   isDark ? "text-zinc-100" : "text-slate-700"
                 )}
               >
-                {["Done", "Cancelado"].map((status) => (
+                {[
+                  "In Analysis",
+                  "Request For Risk Acceptance",
+                  "Risk Accepted",
+                  "In Progress",
+                  "Retest Fail",
+                  "Ready For Retest",
+                  "In Retest",
+                  "Erro",
+                  "Done",
+                  "Containment measure fail",
+                  "Containment measure OK",
+                  "Containment measure ready for retest",
+                  "Containment Measure In Retest",
+                  "Cancelado",
+                  "Reabrir",
+                ].map((status) => (
                   <option
                     key={status}
                     value={status}
@@ -464,7 +480,11 @@ export function ActionForm(props: ActionFormProps) {
                   </p>
                   <div className="mt-3 space-y-3">
                     {assigneeFields
-                      .filter((field) => field.id.startsWith("customfield_1170"))
+                      .filter((field) =>
+                        ["customfield_11702", "customfield_11703", "customfield_11704"].includes(
+                          field.id
+                        )
+                      )
                       .map((field) => (
                         <FieldBlock
                           key={field.id}

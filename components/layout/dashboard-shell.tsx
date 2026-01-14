@@ -3,7 +3,7 @@
 import { useEffect, useState, ReactNode, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { useTheme } from "@/components/theme/theme-provider";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,8 @@ type User = {
   email: string;
   avatar: string | null;
   role?: string;
+  security_level?: string;
+  allowed_routes?: string[];
 };
 
 type NotificationItem = {
@@ -42,6 +44,7 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [accessReady, setAccessReady] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -52,6 +55,7 @@ export function DashboardShell({
   const [unreadCount, setUnreadCount] = useState(0);
   const [clearingNotifications, setClearingNotifications] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
@@ -71,6 +75,10 @@ export function DashboardShell({
 
       const parsed = JSON.parse(raw) as User;
       setUser(parsed);
+      setAccessReady(
+        parsed?.role === "admin" ||
+          (Array.isArray(parsed?.allowed_routes) && parsed.allowed_routes.length > 0)
+      );
       setCheckingAuth(false);
     } catch {
       localStorage.removeItem("postura_user");
@@ -78,6 +86,74 @@ export function DashboardShell({
       setCheckingAuth(false);
     }
   }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+    let ignore = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/users/me", { cache: "no-store" });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          return;
+        }
+        if (ignore) return;
+        if (data?.user) {
+          setUser(data.user);
+          setAccessReady(true);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("postura_user", JSON.stringify(data.user));
+            window.dispatchEvent(new Event("postura_user_updated"));
+          }
+        }
+      } catch {
+        // ignore refresh failures
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user || !pathname || !accessReady) return;
+    if (user.role === "admin") return;
+    const allowedRoutes = user.allowed_routes ?? [];
+    const alwaysAllowed = [
+      "/vulnerabilidades/insights",
+      "/configuracoes",
+      "/changelog",
+      "/changelog/manual",
+      "/dashboard",
+    ];
+    const isAllowed = allowedRoutes.some(
+      (allowed) => pathname === allowed || pathname.startsWith(`${allowed}/`)
+    );
+    const isAlwaysAllowed = alwaysAllowed.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    );
+    if (!isAlwaysAllowed && !isAllowed) {
+      router.replace("/vulnerabilidades/insights");
+    }
+  }, [user, pathname, router]);
+
+  const alwaysAllowed = [
+    "/vulnerabilidades/insights",
+    "/configuracoes",
+    "/changelog",
+    "/changelog/manual",
+    "/dashboard",
+  ];
+  const isDenied =
+    user &&
+    accessReady &&
+    user.role !== "admin" &&
+    !alwaysAllowed.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    ) &&
+    !(user.allowed_routes ?? []).some(
+      (allowed) => pathname === allowed || pathname.startsWith(`${allowed}/`)
+    );
 
   // Sidebar começa colapsada em telas pequenas
   useEffect(() => {
@@ -213,7 +289,7 @@ export function DashboardShell({
     };
   }
 
-  if (checkingAuth || !user) {
+  if (checkingAuth || !user || (!accessReady && user.role !== "admin") || isDenied) {
     return null;
   }
 

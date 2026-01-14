@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
 import {
   getActionRequestById,
+  cancelActionRequestByRequester,
+  listActionRequestEvents,
+  listActionRequestMessages,
   updateActionRequestByRequester,
 } from "@/lib/actions/action-request-service";
 
 type ResubmitPayload = {
+  action?: "cancel";
   actionType?: string;
   filterMode?: string;
   filterValue?: string;
@@ -18,7 +22,23 @@ type ResubmitPayload = {
   csvFileName?: string;
 };
 
-const ALLOWED_STATUS = ["Done", "Cancelado"];
+const ALLOWED_STATUS = [
+  "In Analysis",
+  "Request For Risk Acceptance",
+  "Risk Accepted",
+  "In Progress",
+  "Retest Fail",
+  "Ready For Retest",
+  "In Retest",
+  "Erro",
+  "Done",
+  "Containment measure fail",
+  "Containment measure OK",
+  "Containment measure ready for retest",
+  "Containment Measure In Retest",
+  "Cancelado",
+  "Reabrir",
+];
 const SUPPORTED_ACTIONS = [
   "status",
   "assignee",
@@ -27,6 +47,15 @@ const SUPPORTED_ACTIONS = [
   "escalate",
   "delete",
 ];
+
+function safeParsePayload(raw: string | null) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 export async function PATCH(
   request: Request,
@@ -52,14 +81,33 @@ export async function PATCH(
     return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
   }
 
+  const body = (await request.json().catch(() => null)) as ResubmitPayload | null;
+  if (body?.action === "cancel") {
+    if (!["pending", "returned"].includes(record.status)) {
+      return NextResponse.json(
+        { error: "Apenas solicitações pendentes ou devolvidas podem ser canceladas." },
+        { status: 400 }
+      );
+    }
+    const cancelled = cancelActionRequestByRequester({
+      id: requestId,
+      requesterId: session.id,
+    });
+    if (!cancelled) {
+      return NextResponse.json(
+        { error: "Não foi possível cancelar a solicitação." },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json({ request: cancelled });
+  }
+
   if (record.status !== "returned") {
     return NextResponse.json(
       { error: "Apenas solicitações devolvidas podem ser reenviadas." },
       { status: 400 }
     );
   }
-
-  const body = (await request.json().catch(() => null)) as ResubmitPayload | null;
   const actionType = body?.actionType ?? record.action_type;
   const filterMode = body?.filterMode ?? record.filter_mode;
   const filterValue = body?.filterValue?.trim() ?? record.filter_value;
@@ -163,4 +211,43 @@ export async function PATCH(
   }
 
   return NextResponse.json({ request: updated });
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSessionUser(request.headers.get("cookie") ?? undefined);
+  if (!session) {
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const requestId = Number(id);
+  if (!requestId) {
+    return NextResponse.json({ error: "Requisição inválida." }, { status: 400 });
+  }
+
+  const record = getActionRequestById(requestId);
+  if (!record) {
+    return NextResponse.json({ error: "Solicitação não encontrada." }, { status: 404 });
+  }
+
+  if (session.role !== "admin" && record.requester_id !== session.id) {
+    return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
+  }
+
+  const closedStatuses = ["completed", "failed", "declined", "cancelled"];
+  const events = listActionRequestEvents(requestId);
+  const messages = listActionRequestMessages(requestId);
+
+  return NextResponse.json({
+    request: {
+      ...record,
+      payload: safeParsePayload(record.payload),
+    },
+    events,
+    messages,
+    canChat: !closedStatuses.includes(record.status),
+  });
 }

@@ -89,29 +89,69 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       return false;
     }
   });
+  const [allowedRoutes, setAllowedRoutes] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("postura_user");
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as { allowed_routes?: string[] };
+      return Array.isArray(parsed?.allowed_routes) ? parsed.allowed_routes : [];
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    function handleStorage(event: StorageEvent) {
-      if (event.key && event.key !== "postura_user") return;
+    function refreshFromStorage() {
       try {
-        const value = event.newValue ?? window.localStorage.getItem("postura_user");
+        const value = window.localStorage.getItem("postura_user");
         if (!value) {
           setIsAdmin(false);
+          setAllowedRoutes([]);
           return;
         }
-        const parsed = JSON.parse(value) as { role?: string };
+        const parsed = JSON.parse(value) as {
+          role?: string;
+          allowed_routes?: string[];
+        };
         setIsAdmin(parsed?.role === "admin");
+        setAllowedRoutes(
+          Array.isArray(parsed?.allowed_routes) ? parsed.allowed_routes : []
+        );
       } catch {
         setIsAdmin(false);
+        setAllowedRoutes([]);
       }
     }
 
+    function handleStorage(event: StorageEvent) {
+      if (event.key && event.key !== "postura_user") return;
+      refreshFromStorage();
+    }
+
+    function handleUserUpdate() {
+      refreshFromStorage();
+    }
+
     window.addEventListener("storage", handleStorage);
+    window.addEventListener("postura_user_updated", handleUserUpdate);
     return () => {
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("postura_user_updated", handleUserUpdate);
     };
   }, []);
+
+  const alwaysAllowed = ["/vulnerabilidades/insights", "/configuracoes", "/changelog", "/changelog/manual"];
+
+  function isNavAllowed(href: string) {
+    if (isAdmin) return true;
+    if (alwaysAllowed.includes(href)) return true;
+    if (allowedRoutes.length === 0) return true;
+    return allowedRoutes.some(
+      (allowed) => href === allowed || href.startsWith(`${allowed}/`)
+    );
+  }
 
   const mainItems = navItems.filter(
     (i) =>
@@ -120,14 +160,18 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       i.label !== "Manual" &&
       (!i.requiresAdmin || isAdmin)
   );
+  const filteredMainItems = mainItems.filter((item) => isNavAllowed(item.href));
   const settingsItem = navItems.find((i) => i.label === "Configurações");
   const changelogItem = navItems.find((i) => i.label === "Changelog");
   const manualItem = navItems.find((i) => i.label === "Manual");
+  const visibleSettingsItem = settingsItem && isNavAllowed(settingsItem.href) ? settingsItem : undefined;
+  const visibleChangelogItem = changelogItem && isNavAllowed(changelogItem.href) ? changelogItem : undefined;
+  const visibleManualItem = manualItem && isNavAllowed(manualItem.href) ? manualItem : undefined;
   const visibleNavHrefs = [
-    ...mainItems.map((item) => item.href),
-    ...(changelogItem ? [changelogItem.href] : []),
-    ...(manualItem ? [manualItem.href] : []),
-    ...(settingsItem ? [settingsItem.href] : []),
+    ...filteredMainItems.map((item) => item.href),
+    ...(visibleChangelogItem ? [visibleChangelogItem.href] : []),
+    ...(visibleManualItem ? [visibleManualItem.href] : []),
+    ...(visibleSettingsItem ? [visibleSettingsItem.href] : []),
   ];
 
   function isRouteActive(href: string) {
@@ -256,7 +300,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
         {/* NAVEGAÇÃO PRINCIPAL */}
         <nav className="flex-1 space-y-1 px-2">
-          {mainItems.map((item) => {
+          {filteredMainItems.map((item) => {
             const Icon = item.icon;
             const isActive = isRouteActive(item.href);
 
@@ -319,7 +363,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         </nav>
 
         {/* CHANGES + CONFIG BOTTOM */}
-        {(settingsItem || changelogItem || manualItem) && (
+        {(visibleSettingsItem || visibleChangelogItem || visibleManualItem) && (
           <div className="px-2 pb-2 space-y-2">
             <div
               className={cn(
@@ -327,7 +371,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 isDark ? "border-zinc-800" : "border-slate-200"
               )}
             />
-            {[changelogItem, manualItem, settingsItem]
+            {[visibleChangelogItem, visibleManualItem, visibleSettingsItem]
               .filter(Boolean)
               .map((item) => {
                 if (!item) return null;

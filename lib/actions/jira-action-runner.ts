@@ -20,6 +20,11 @@ type JiraConfig = {
   verifySsl: boolean;
 };
 
+type ActionPayload = {
+  comment?: string;
+  customFields?: Array<{ id?: string; value?: string; mode?: string }>;
+};
+
 class JiraApiError extends Error {
   status: number;
 
@@ -57,6 +62,25 @@ function parseIssueIds(raw: string) {
     .filter(Boolean);
 }
 
+function parsePayload(raw: string | null) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ActionPayload;
+  } catch {
+    return null;
+  }
+}
+
+function extractErrorMessage(raw: string, data: Record<string, unknown> | null) {
+  return (
+    (data?.errorMessages as string[] | undefined)?.[0] ||
+    (data?.error as string | undefined) ||
+    (data?.message as string | undefined) ||
+    raw ||
+    ""
+  );
+}
+
 async function jiraFetch(
   config: JiraConfig,
   path: string,
@@ -74,6 +98,22 @@ async function jiraFetch(
     },
     dispatcher,
   });
+}
+
+async function getIssueKeys(
+  config: JiraConfig,
+  filterMode: string,
+  filterValue: string,
+  maxResultsLimit: number
+) {
+  if (filterMode === "ids") {
+    return parseIssueIds(filterValue);
+  }
+  if (filterMode === "jql") {
+    const issues = await fetchIssuesByJql(config, filterValue, maxResultsLimit);
+    return issues.map((issue) => issue.key);
+  }
+  return [];
 }
 
 async function fetchIssuesByJql(config: JiraConfig, jql: string, maxResultsLimit: number) {
@@ -99,11 +139,7 @@ async function fetchIssuesByJql(config: JiraConfig, jql: string, maxResultsLimit
     }
     if (!response.ok) {
       throw new JiraApiError(
-        (data?.errorMessages as string[] | undefined)?.[0] ||
-          (data?.error as string | undefined) ||
-          (data?.message as string | undefined) ||
-          raw ||
-          "",
+        extractErrorMessage(raw, data),
         response.status
       );
     }
@@ -157,11 +193,7 @@ async function transitionIssue(
   }
   if (!transitionsResponse.ok) {
     throw new JiraApiError(
-      (transitionsData?.errorMessages as string[] | undefined)?.[0] ||
-        (transitionsData?.error as string | undefined) ||
-        (transitionsData?.message as string | undefined) ||
-        transitionsRaw ||
-        "",
+      extractErrorMessage(transitionsRaw, transitionsData),
       transitionsResponse.status
     );
   }
@@ -216,17 +248,69 @@ async function transitionIssue(
       }
     }
     throw new JiraApiError(
-      (transitionError?.errorMessages as string[] | undefined)?.[0] ||
-        (transitionError?.error as string | undefined) ||
-        (transitionError?.message as string | undefined) ||
-        transitionRaw ||
-        "",
+      extractErrorMessage(transitionRaw, transitionError),
       transitionResponse.status
     );
   }
 }
 
-export async function executeStatusActionJob(jobId: number, requestId: number) {
+async function updateIssueFields(
+  config: JiraConfig,
+  issueKey: string,
+  fields: Record<string, unknown>
+) {
+  const response = await jiraFetch(
+    config,
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields }),
+    }
+  );
+  if (!response.ok) {
+    const raw = await response.text();
+    let data: Record<string, unknown> | null = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        data = null;
+      }
+    }
+    throw new JiraApiError(extractErrorMessage(raw, data), response.status);
+  }
+}
+
+async function addIssueComment(
+  config: JiraConfig,
+  issueKey: string,
+  comment: string
+) {
+  const response = await jiraFetch(
+    config,
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}/comment`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: comment }),
+    }
+  );
+  if (!response.ok) {
+    const raw = await response.text();
+    let data: Record<string, unknown> | null = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        data = null;
+      }
+    }
+    throw new JiraApiError(extractErrorMessage(raw, data), response.status);
+  }
+}
+
+export async function executeActionJob(jobId: number, requestId: number) {
   updateJobStatus({ id: jobId, status: "running" });
   updateActionRequestExecutionStatus({ id: requestId, status: "running" });
   const targetRequest = getActionRequestById(requestId);
@@ -249,35 +333,20 @@ export async function executeStatusActionJob(jobId: number, requestId: number) {
   const maxResultsLimit = Number.isFinite(maxResultsSetting)
     ? Math.max(1, Math.floor(maxResultsSetting))
     : DEFAULT_MAX_JIRA_RESULTS;
-  const targetStatus = targetRequest.requested_status?.trim();
-  if (!targetStatus) {
-    updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
-    updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
-    return;
-  }
-
   let issueKeys: string[] = [];
-  if (targetRequest.filter_mode === "ids") {
-    issueKeys = parseIssueIds(targetRequest.filter_value);
-  } else if (targetRequest.filter_mode === "jql") {
-    try {
-      const issues = await fetchIssuesByJql(
-        jiraConfig,
-        targetRequest.filter_value,
-        maxResultsLimit
-      );
-      issueKeys = issues.map((issue) => issue.key);
-    } catch (err) {
-      if (err instanceof JiraApiError) {
-        updateJobStatus({ id: jobId, status: "failed", errorMessage: err.message });
-        updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: err.message });
-        return;
-      }
-      updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
-      updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
+  try {
+    issueKeys = await getIssueKeys(
+      jiraConfig,
+      targetRequest.filter_mode,
+      targetRequest.filter_value,
+      maxResultsLimit
+    );
+  } catch (err) {
+    if (err instanceof JiraApiError) {
+      updateJobStatus({ id: jobId, status: "failed", errorMessage: err.message });
+      updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: err.message });
       return;
     }
-  } else {
     updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
     updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
     return;
@@ -293,7 +362,40 @@ export async function executeStatusActionJob(jobId: number, requestId: number) {
   updateJobProgress({ id: jobId, totalIssues: issueKeys.length, processedIssues: 0 });
   for (const key of issueKeys) {
     try {
-      await transitionIssue(jiraConfig, key, targetStatus);
+      if (targetRequest.action_type === "status") {
+        const targetStatus = targetRequest.requested_status?.trim();
+        if (!targetStatus) {
+          throw new JiraApiError("", 400);
+        }
+        await transitionIssue(jiraConfig, key, targetStatus);
+      } else if (targetRequest.action_type === "assignee") {
+        const payload = parsePayload(targetRequest.payload);
+        const fields: Record<string, unknown> = {};
+        (payload?.customFields ?? []).forEach((field) => {
+          const fieldId = field.id?.trim();
+          if (!fieldId) return;
+          if (field.mode === "clear") {
+            fields[fieldId] = null;
+            return;
+          }
+          if (field.value !== undefined) {
+            fields[fieldId] = field.value;
+          }
+        });
+        if (!Object.keys(fields).length) {
+          throw new JiraApiError("", 400);
+        }
+        await updateIssueFields(jiraConfig, key, fields);
+      } else if (targetRequest.action_type === "comment") {
+        const payload = parsePayload(targetRequest.payload);
+        const comment = payload?.comment?.trim();
+        if (!comment) {
+          throw new JiraApiError("", 400);
+        }
+        await addIssueComment(jiraConfig, key, comment);
+      } else {
+        throw new JiraApiError("", 400);
+      }
       processedCount += 1;
       updateJobProgress({ id: jobId, processedIssues: processedCount });
     } catch (err) {
@@ -332,7 +434,7 @@ export async function startQueuedJobs() {
   queued.forEach((job) => {
     updateJobStatus({ id: job.id, status: "running" });
     setTimeout(() => {
-      void executeStatusActionJob(job.id, job.request_id);
+      void executeActionJob(job.id, job.request_id);
     }, 0);
   });
 }

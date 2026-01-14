@@ -202,6 +202,15 @@ export function updateUserSecurityLevel(
   return fetch.get(userId) ?? null;
 }
 
+export function countUsersBySecurityLevel(securityLevel: string) {
+  seedAdmin();
+  const stmt = db.prepare<{ total: number }>(
+    "SELECT COUNT(1) as total FROM users WHERE security_level = ?"
+  );
+  const result = stmt.get(securityLevel);
+  return result?.total ?? 0;
+}
+
 export function findUserById(id: number): UserRecord | undefined {
   seedAdmin();
   const stmt = db.prepare<UserRecord>(

@@ -7,6 +7,7 @@ import {
   listPendingRequests,
   listRecentRequests,
   listCompletedRequests,
+  listActionRequestsByStatuses,
   listUserRequests,
   deleteActionRequest,
   updateActionRequestStatus,
@@ -32,7 +33,23 @@ type ActionRequestPayload = {
   csvFileName?: string;
 };
 
-const ALLOWED_STATUS = ["Done", "Cancelado"];
+const ALLOWED_STATUS = [
+  "In Analysis",
+  "Request For Risk Acceptance",
+  "Risk Accepted",
+  "In Progress",
+  "Retest Fail",
+  "Ready For Retest",
+  "In Retest",
+  "Erro",
+  "Done",
+  "Containment measure fail",
+  "Containment measure OK",
+  "Containment measure ready for retest",
+  "Containment Measure In Retest",
+  "Cancelado",
+  "Reabrir",
+];
 const SUPPORTED_ACTIONS = [
   "status",
   "assignee",
@@ -410,7 +427,11 @@ export async function GET(request: Request) {
       statusFilter === "approved" ||
       statusFilter === "declined" ||
       statusFilter === "returned" ||
-      statusFilter === "completed"
+      statusFilter === "completed" ||
+      statusFilter === "queued" ||
+      statusFilter === "running" ||
+      statusFilter === "failed" ||
+      statusFilter === "cancelled"
         ? statusFilter
         : undefined;
     const userRequests = listUserRequests({
@@ -420,6 +441,10 @@ export async function GET(request: Request) {
         | "approved"
         | "declined"
         | "completed"
+        | "queued"
+        | "running"
+        | "failed"
+        | "cancelled"
         | undefined,
       limit,
     });
@@ -431,6 +456,26 @@ export async function GET(request: Request) {
 
   if (session.role !== "admin") {
     return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
+  }
+
+  if (statusFilter === "open") {
+    const openRequests = listActionRequestsByStatuses(
+      ["pending", "returned", "queued", "running", "approved"],
+      limit
+    );
+    return NextResponse.json({
+      requests: openRequests.map((record) => serializeRequest(record)),
+    });
+  }
+
+  if (statusFilter === "closed") {
+    const closedRequests = listActionRequestsByStatuses(
+      ["completed", "failed", "declined", "cancelled"],
+      limit
+    );
+    return NextResponse.json({
+      requests: closedRequests.map((record) => serializeRequest(record)),
+    });
   }
 
   const rawRequests =
@@ -659,7 +704,10 @@ export async function PATCH(request: Request) {
     );
   }
 
-  if (decision === "approve" && targetRequest.action_type === "status") {
+  if (
+    decision === "approve" &&
+    ["status", "assignee", "comment"].includes(targetRequest.action_type)
+  ) {
     const jiraConfig = getJiraConfig();
     if (!jiraConfig.url || !jiraConfig.token) {
       return NextResponse.json(
@@ -696,6 +744,7 @@ export async function PATCH(request: Request) {
     status: newStatus,
     approverName: session.name,
     auditNotes: notes,
+    eventType: decisionStatus,
   });
 
   if (!updated) {
