@@ -12,9 +12,9 @@ import {
 } from "@/lib/actions/action-job-service";
 import {
   ASSIGNEE_CUSTOM_FIELDS,
-  ASSIGNEE_MULTI_USER_FIELDS,
+  ASSIGNEE_LABEL_FIELDS,
   normalizeAssigneeLabel,
-  toMultiUserValues,
+  toLabelValues,
 } from "@/lib/actions/assignee-fields";
 
 const DEFAULT_MAX_JIRA_RESULTS = 200;
@@ -502,8 +502,8 @@ export async function executeActionJob(jobId: number, requestId: number) {
               normalizedFields[fieldId] = null;
               return;
             }
-            if (ASSIGNEE_MULTI_USER_FIELDS.has(fieldId) && typeof value === "string") {
-              normalizedFields[fieldId] = toMultiUserValues(value);
+            if (ASSIGNEE_LABEL_FIELDS.has(fieldId) && typeof value === "string") {
+              normalizedFields[fieldId] = toLabelValues(value);
               return;
             }
             normalizedFields[fieldId] = value;
@@ -525,8 +525,8 @@ export async function executeActionJob(jobId: number, requestId: number) {
               return;
             }
             if (field.value !== undefined) {
-              if (ASSIGNEE_MULTI_USER_FIELDS.has(fieldId)) {
-                fields[fieldId] = toMultiUserValues(String(field.value));
+              if (ASSIGNEE_LABEL_FIELDS.has(fieldId)) {
+                fields[fieldId] = toLabelValues(String(field.value));
               } else {
                 fields[fieldId] = field.value;
               }
