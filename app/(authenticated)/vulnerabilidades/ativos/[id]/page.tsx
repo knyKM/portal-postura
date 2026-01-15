@@ -72,6 +72,7 @@ export default function VulnerabilidadeAtivoPage() {
     {}
   );
   const [retests, setRetests] = useState<RetestRecord[]>([]);
+  const [expandedTimeline, setExpandedTimeline] = useState<Record<string, boolean>>({});
   const [dataError, setDataError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
@@ -365,6 +366,10 @@ export default function VulnerabilidadeAtivoPage() {
       : "border-purple-200 bg-purple-50 text-purple-700";
   }
 
+  function toggleTimeline(key: string) {
+    setExpandedTimeline((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   return (
     <DashboardShell
       pageTitle="Detalhes do ativo"
@@ -586,36 +591,57 @@ export default function VulnerabilidadeAtivoPage() {
                     {(() => {
                       const retestHistory = getRetestHistory(vuln.id, server.id);
                       const timelineItems = buildTimeline(entry, retestHistory);
+                      const timelineKey = `${server.id}-${vuln.id}`;
                       if (timelineItems.length === 0) return null;
                       return (
                         <div className="mt-3">
-                          <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                            Linha do tempo
-                          </p>
-                          <div
-                            className={cn(
-                              "mt-2 border-l border-dashed pl-4",
-                              isDark ? "border-white/10" : "border-slate-200"
-                            )}
-                          >
-                            {timelineItems.map((item, index) => (
-                              <div
-                                key={`${server.id}-${vuln.id}-${item.label}-${item.date}-${index}`}
-                                className="relative pb-3 text-xs"
-                              >
-                                <span
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                              Linha do tempo
+                            </p>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full px-3 py-1 text-[10px]"
+                              onClick={() => toggleTimeline(timelineKey)}
+                            >
+                              {expandedTimeline[timelineKey] ? "Recolher" : "Ver"}
+                            </Button>
+                          </div>
+                          {expandedTimeline[timelineKey] && (
+                            <div className="mt-3">
+                              <div className="relative">
+                                <div
                                   className={cn(
-                                    "absolute -left-[9px] top-1.5 h-3 w-3 rounded-full border",
-                                    timelineTone(item.tone)
+                                    "absolute left-3 right-3 top-3 h-px",
+                                    isDark ? "bg-white/10" : "bg-slate-200"
                                   )}
                                 />
-                                <p className="text-[11px] text-zinc-500">
-                                  {formatDate(item.date)}
-                                </p>
-                                <p className="font-semibold">{item.label}</p>
+                                <div className="flex flex-wrap gap-4">
+                                  {timelineItems.map((item, index) => (
+                                    <div
+                                      key={`${server.id}-${vuln.id}-${item.label}-${item.date}-${index}`}
+                                      className="relative w-[160px] pb-2 text-xs"
+                                    >
+                                      <span
+                                        className={cn(
+                                          "absolute left-2 top-2 h-3 w-3 -translate-y-1/2 rounded-full border",
+                                          timelineTone(item.tone)
+                                        )}
+                                      />
+                                      <div className="pt-4">
+                                        <p className="text-[11px] text-zinc-500">
+                                          {formatDate(item.date)}
+                                        </p>
+                                        <p className="font-semibold">{item.label}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            ))}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })()}
