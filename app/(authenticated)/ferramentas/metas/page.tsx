@@ -44,6 +44,7 @@ export default function MetasPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [updates, setUpdates] = useState<GoalUpdate[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [name, setName] = useState("");
   const [front, setFront] = useState("");
@@ -107,6 +108,28 @@ export default function MetasPage() {
       return acc;
     }, {});
   }, [updates]);
+
+  const filteredGoals = useMemo(() => {
+    if (!searchTerm.trim()) return goals;
+    const normalized = searchTerm.toLowerCase();
+    return goals.filter((goal) =>
+      [goal.name, goal.front, goal.owner]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized)
+    );
+  }, [goals, searchTerm]);
+
+  const summary = useMemo(() => {
+    if (goals.length === 0) {
+      return { total: 0, avg: 0, completed: 0 };
+    }
+    const progressList = goals.map((goal) => getLatestProgress(goal));
+    const avg =
+      progressList.reduce((sum, value) => sum + value, 0) / progressList.length;
+    const completed = progressList.filter((value) => value >= 100).length;
+    return { total: goals.length, avg, completed };
+  }, [goals, updatesByGoal]);
 
   function getLatestProgress(goal: Goal) {
     const goalUpdates = updatesByGoal[goal.id] ?? [];
@@ -226,7 +249,9 @@ export default function MetasPage() {
         <Card
           className={cn(
             "rounded-3xl border p-5",
-            isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
+            isDark
+              ? "border-white/10 bg-gradient-to-br from-[#0c122b] via-[#080d1f] to-[#050816]"
+              : "border-slate-200 bg-white"
           )}
         >
           <CardContent className="p-0 space-y-4">
@@ -236,51 +261,51 @@ export default function MetasPage() {
                   Nova meta
                 </p>
                 <h3 className="mt-2 text-lg font-semibold">Cadastro do time</h3>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Centralize o objetivo, o responsável e o alvo para acompanhamento.
+                </p>
               </div>
               <span
                 className={cn(
-                  "rounded-2xl border p-2",
+                  "rounded-2xl border p-3",
                   isDark
                     ? "border-white/10 bg-white/10 text-purple-200"
                     : "border-purple-200 bg-purple-50 text-purple-600"
                 )}
               >
-                <Target className="h-4 w-4" />
+                <Target className="h-5 w-5" />
               </span>
             </div>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Nome da meta"
-              className={cn(
-                "rounded-xl",
-                isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
-              )}
-            />
-            <Input
-              value={front}
-              onChange={(event) => setFront(event.target.value)}
-              placeholder="Frente responsável"
-              className={cn(
-                "rounded-xl",
-                isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
-              )}
-            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Nome da meta"
+                className={cn(
+                  "rounded-xl",
+                  isDark
+                    ? "border-white/10 bg-black/40 text-white"
+                    : "border-slate-200 bg-white"
+                )}
+              />
+              <Input
+                value={front}
+                onChange={(event) => setFront(event.target.value)}
+                placeholder="Frente responsável"
+                className={cn(
+                  "rounded-xl",
+                  isDark
+                    ? "border-white/10 bg-black/40 text-white"
+                    : "border-slate-200 bg-white"
+                )}
+              />
+            </div>
             <Input
               value={owner}
               onChange={(event) => setOwner(event.target.value)}
               placeholder="Owner da atividade"
               className={cn(
                 "rounded-xl",
-                isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
-              )}
-            />
-            <Textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Descrição da meta"
-              className={cn(
-                "rounded-xl min-h-[120px]",
                 isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
               )}
             />
@@ -312,6 +337,7 @@ export default function MetasPage() {
                 <Input
                   value={targetValue}
                   onChange={(event) => setTargetValue(event.target.value)}
+                  type="number"
                   placeholder={targetType === "percent" ? "100" : "Total esperado"}
                   className={cn(
                     "mt-1 rounded-xl",
@@ -326,6 +352,15 @@ export default function MetasPage() {
               placeholder="Métrica (ex.: entregas, servidores, %)"
               className={cn(
                 "rounded-xl",
+                isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
+              )}
+            />
+            <Textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Descrição da meta"
+              className={cn(
+                "rounded-xl min-h-[120px]",
                 isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
               )}
             />
@@ -353,6 +388,82 @@ export default function MetasPage() {
         </Card>
 
         <div className="space-y-4">
+          <Card
+            className={cn(
+              "rounded-3xl border p-4",
+              isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
+            )}
+          >
+            <CardContent className="p-0">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                    Painel de metas
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold">
+                    Acompanhamento consolidado
+                  </h3>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Visualize a saúde geral e encontre metas rapidamente.
+                  </p>
+                </div>
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Buscar por meta, frente ou owner"
+                  className={cn(
+                    "h-10 w-full max-w-[320px] rounded-xl",
+                    isDark
+                      ? "border-white/10 bg-black/40 text-white"
+                      : "border-slate-200 bg-white"
+                  )}
+                />
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-3 text-sm",
+                    isDark
+                      ? "border-white/10 bg-black/30 text-zinc-100"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                  )}
+                >
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                    Metas ativas
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold">{summary.total}</p>
+                </div>
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-3 text-sm",
+                    isDark
+                      ? "border-white/10 bg-black/30 text-zinc-100"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                  )}
+                >
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                    Média de evolução
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold">
+                    {summary.avg.toFixed(0)}%
+                  </p>
+                </div>
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-3 text-sm",
+                    isDark
+                      ? "border-white/10 bg-black/30 text-zinc-100"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                  )}
+                >
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                    Metas concluídas
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold">{summary.completed}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           {goals.length === 0 ? (
             <Card
               className={cn(
@@ -366,8 +477,21 @@ export default function MetasPage() {
                 Nenhuma meta cadastrada.
               </CardContent>
             </Card>
+          ) : filteredGoals.length === 0 ? (
+            <Card
+              className={cn(
+                "rounded-3xl border p-6",
+                isDark
+                  ? "border-white/10 bg-white/5 text-zinc-100"
+                  : "border-slate-200 bg-white text-slate-700"
+              )}
+            >
+              <CardContent className="p-0">
+                Nenhuma meta encontrada para essa busca.
+              </CardContent>
+            </Card>
           ) : (
-            goals.map((goal) => {
+            filteredGoals.map((goal) => {
               const goalUpdates = updatesByGoal[goal.id] ?? [];
               const latestProgress = getLatestProgress(goal);
               const progressLabel =
@@ -423,7 +547,12 @@ export default function MetasPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-dashed border-purple-500/40 p-4">
+                    <div
+                      className={cn(
+                        "rounded-2xl border border-dashed p-4",
+                        isDark ? "border-purple-500/40" : "border-purple-300"
+                      )}
+                    >
                       <div className="flex items-center justify-between">
                         <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
                           Registrar andamento
@@ -468,6 +597,7 @@ export default function MetasPage() {
                             <Input
                               value={progressValue}
                               onChange={(event) => setProgressValue(event.target.value)}
+                              type="number"
                               placeholder={progressType === "percent" ? "0-100" : "Valor total"}
                               className={cn(
                                 "rounded-xl",
@@ -492,6 +622,7 @@ export default function MetasPage() {
                             <Input
                               value={progressDate}
                               onChange={(event) => setProgressDate(event.target.value)}
+                              type="date"
                               placeholder="Data (YYYY-MM-DD)"
                               className={cn(
                                 "rounded-xl",
