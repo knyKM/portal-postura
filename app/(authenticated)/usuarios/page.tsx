@@ -57,6 +57,7 @@ type SecurityLevel = {
 };
 
 const securityRouteOptions = [
+  { label: "Vulnerabilidades", value: "/vulnerabilidades" },
   { label: "Ações", value: "/acoes" },
   { label: "Playbooks", value: "/playbooks" },
   { label: "Ferramentas", value: "/ferramentas" },

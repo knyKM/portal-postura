@@ -444,7 +444,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
             <div className="grid gap-4 xl:grid-cols-2">
               {requests.map((request) => {
                 const summary =
-                  request.filter_mode === "ids"
+                  request.filter_mode === "ids" || request.filter_mode === "bulk"
                     ? summarizeIds(request.filter_value, 4)
                     : null;
                 const highlight = highlightedId === request.id;
@@ -489,7 +489,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                         <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
                           Conjunto ({request.filter_mode.toUpperCase()})
                         </p>
-                        {request.filter_mode === "ids" && summary ? (
+                        {summary ? (
                           <div className="mt-2 space-y-1 text-sm">
                             {summary.preview.map((id, index) => (
                               <p key={`${request.id}-preview-${index}`}>{id}</p>
@@ -683,7 +683,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
                     <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
                       Conjunto ({request.filter_mode.toUpperCase()})
                     </p>
-                    {request.filter_mode === "ids" ? (
+                    {request.filter_mode === "ids" || request.filter_mode === "bulk" ? (
                       (() => {
                         const summary = summarizeIds(request.filter_value, 5);
                         return (

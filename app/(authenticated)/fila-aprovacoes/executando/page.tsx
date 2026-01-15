@@ -297,7 +297,7 @@ export default function AcoesExecutandoPage() {
                     {job.status}
                   </span>
                 </div>
-                {job.status === "running" && expandedJobId === job.id && (
+                {job.status === "running" && (
                   <div className="mt-3 space-y-2">
                     <p className={cn("text-xs", isDark ? "text-zinc-400" : "text-slate-500")}>
                       Progresso{" "}
