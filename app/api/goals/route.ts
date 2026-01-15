@@ -32,6 +32,7 @@ type GoalPayload = {
   front?: string;
   owner?: string;
   description?: string;
+  dueDate?: string;
   targetType?: "percent" | "value";
   targetValue?: number;
   targetUnit?: string;
@@ -95,6 +96,10 @@ export async function POST(request: Request) {
   const owner = typeof payload.owner === "string" ? payload.owner.trim() : "";
   const description =
     typeof payload.description === "string" ? payload.description.trim() : "";
+  const dueDate =
+    typeof payload.dueDate === "string" && payload.dueDate.trim()
+      ? payload.dueDate.trim()
+      : null;
   const targetType = payload.targetType === "value" ? "value" : "percent";
   const targetValue = Number(payload.targetValue ?? (targetType === "percent" ? 100 : 0));
   const targetUnit =
@@ -120,6 +125,7 @@ export async function POST(request: Request) {
       front,
       owner,
       description,
+      dueDate,
       targetType,
       targetValue,
       targetUnit,

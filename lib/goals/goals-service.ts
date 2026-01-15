@@ -6,6 +6,7 @@ export type GoalRecord = {
   front: string;
   owner: string;
   description: string | null;
+  due_date: string | null;
   target_type: "percent" | "value";
   target_value: number;
   target_unit: string | null;
@@ -30,6 +31,7 @@ export type GoalInput = {
   front: string;
   owner: string;
   description?: string | null;
+  dueDate?: string | null;
   targetType: "percent" | "value";
   targetValue: number;
   targetUnit?: string | null;
@@ -47,7 +49,7 @@ export type GoalUpdateInput = {
 export function listGoals() {
   return db
     .prepare<GoalRecord>(
-      `SELECT id, name, front, owner, description, target_type, target_value, target_unit,
+      `SELECT id, name, front, owner, description, due_date, target_type, target_value, target_unit,
               created_at, updated_at
        FROM goals
        ORDER BY created_at DESC`
@@ -71,9 +73,9 @@ export function createGoal(input: GoalInput) {
   const record = db
     .prepare<GoalRecord>(
       `INSERT INTO goals
-        (name, front, owner, description, target_type, target_value, target_unit, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       RETURNING id, name, front, owner, description, target_type, target_value, target_unit,
+        (name, front, owner, description, due_date, target_type, target_value, target_unit, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id, name, front, owner, description, due_date, target_type, target_value, target_unit,
                  created_at, updated_at`
     )
     .get(
@@ -81,6 +83,7 @@ export function createGoal(input: GoalInput) {
       input.front,
       input.owner,
       input.description ?? null,
+      input.dueDate ?? null,
       input.targetType,
       input.targetValue,
       input.targetUnit ?? null,

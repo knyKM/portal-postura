@@ -496,6 +496,7 @@ db.exec(`
     front TEXT NOT NULL,
     owner TEXT NOT NULL,
     description TEXT,
+    due_date TEXT,
     target_type TEXT NOT NULL DEFAULT 'percent',
     target_value REAL NOT NULL DEFAULT 100,
     target_unit TEXT,
@@ -503,6 +504,16 @@ db.exec(`
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+const goalsTableInfo = db
+  .prepare("PRAGMA table_info(goals)")
+  .all() as TableInfoRow[];
+
+const hasGoalsDueDate = goalsTableInfo.some((column) => column.name === "due_date");
+
+if (!hasGoalsDueDate) {
+  db.exec("ALTER TABLE goals ADD COLUMN due_date TEXT");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS goal_updates (

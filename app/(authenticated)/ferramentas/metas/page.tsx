@@ -17,6 +17,7 @@ type Goal = {
   front: string;
   owner: string;
   description: string | null;
+  due_date: string | null;
   target_type: "percent" | "value";
   target_value: number;
   target_unit: string | null;
@@ -50,6 +51,7 @@ export default function MetasPage() {
   const [front, setFront] = useState("");
   const [owner, setOwner] = useState("");
   const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [targetType, setTargetType] = useState<"percent" | "value">("percent");
   const [targetValue, setTargetValue] = useState("100");
   const [targetUnit, setTargetUnit] = useState("");
@@ -120,6 +122,14 @@ export default function MetasPage() {
     );
   }, [goals, searchTerm]);
 
+  function getLatestUpdate(goal: Goal) {
+    const goalUpdates = updatesByGoal[goal.id] ?? [];
+    if (goalUpdates.length === 0) return null;
+    return [...goalUpdates].sort((a, b) =>
+      a.progress_date.localeCompare(b.progress_date)
+    )[goalUpdates.length - 1];
+  }
+
   const summary = useMemo(() => {
     if (goals.length === 0) {
       return { total: 0, avg: 0, completed: 0 };
@@ -129,6 +139,66 @@ export default function MetasPage() {
       progressList.reduce((sum, value) => sum + value, 0) / progressList.length;
     const completed = progressList.filter((value) => value >= 100).length;
     return { total: goals.length, avg, completed };
+  }, [goals, updatesByGoal]);
+
+  const timelineSummary = useMemo(() => {
+    const now = new Date();
+    let onTime = 0;
+    let late = 0;
+    let atRisk = 0;
+    let inProgress = 0;
+    let notStarted = 0;
+    let noDeadline = 0;
+
+    goals.forEach((goal) => {
+      const progress = getLatestProgress(goal);
+      const latest = getLatestUpdate(goal);
+      const started = Boolean(latest);
+      const due = goal.due_date ? new Date(goal.due_date) : null;
+
+      if (!due || Number.isNaN(due.getTime())) {
+        noDeadline += 1;
+      }
+
+      if (progress >= 100) {
+        if (due && latest?.progress_date) {
+          const deliveredAt = new Date(latest.progress_date);
+          if (deliveredAt <= due) {
+            onTime += 1;
+          } else {
+            late += 1;
+          }
+        } else {
+          onTime += 1;
+        }
+        return;
+      }
+
+      if (!started) {
+        notStarted += 1;
+      } else {
+        inProgress += 1;
+      }
+
+      if (due) {
+        const daysRemaining = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+        const farFromTarget = progress < 40;
+        const closeToDeadline = daysRemaining <= 7;
+        const shortWindow = daysRemaining <= 14 && progress < 60;
+        if (daysRemaining <= 0 || (closeToDeadline && progress < 60) || (shortWindow && farFromTarget)) {
+          atRisk += 1;
+        }
+      }
+    });
+
+    return {
+      onTime,
+      late,
+      atRisk,
+      inProgress,
+      notStarted,
+      noDeadline,
+    };
   }, [goals, updatesByGoal]);
 
   function getLatestProgress(goal: Goal) {
@@ -165,6 +235,7 @@ export default function MetasPage() {
           front: trimmedFront,
           owner: trimmedOwner,
           description: description.trim(),
+          dueDate: dueDate || null,
           targetType,
           targetValue: Number(targetValue || "0"),
           targetUnit: targetUnit.trim(),
@@ -181,6 +252,7 @@ export default function MetasPage() {
       setFront("");
       setOwner("");
       setDescription("");
+      setDueDate("");
       setTargetType("percent");
       setTargetValue("100");
       setTargetUnit("");
@@ -393,6 +465,16 @@ export default function MetasPage() {
                 isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
               )}
             />
+            <Input
+              value={dueDate}
+              onChange={(event) => setDueDate(event.target.value)}
+              type="date"
+              placeholder="Prazo final"
+              className={cn(
+                "rounded-xl",
+                isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
+              )}
+            />
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-400">
@@ -503,6 +585,146 @@ export default function MetasPage() {
                   )}
                 />
               </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-4",
+                    isDark
+                      ? "border-white/10 bg-black/30 text-zinc-100"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                  )}
+                >
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                    Cascata de metas
+                  </p>
+                  <div className="mt-4">
+                    {(() => {
+                      const total = Math.max(1, summary.total);
+                      const cascade = [
+                        {
+                          label: "Nao iniciadas",
+                          value: timelineSummary.notStarted,
+                          tone: isDark
+                            ? "bg-amber-500/30 text-amber-200"
+                            : "bg-amber-100 text-amber-700",
+                        },
+                        {
+                          label: "Em andamento",
+                          value: timelineSummary.inProgress,
+                          tone: isDark
+                            ? "bg-indigo-500/30 text-indigo-200"
+                            : "bg-indigo-100 text-indigo-700",
+                        },
+                        {
+                          label: "Ameaca",
+                          value: timelineSummary.atRisk,
+                          tone: isDark
+                            ? "bg-rose-500/30 text-rose-200"
+                            : "bg-rose-100 text-rose-700",
+                        },
+                        {
+                          label: "Concluidas",
+                          value: timelineSummary.onTime + timelineSummary.late,
+                          tone: isDark
+                            ? "bg-emerald-500/30 text-emerald-200"
+                            : "bg-emerald-100 text-emerald-700",
+                        },
+                      ];
+                      return (
+                        <div className="space-y-3">
+                          {cascade.map((item, index) => (
+                            <div key={item.label} className="relative">
+                              <div className="flex items-center justify-between text-xs text-zinc-400">
+                                <span>{item.label}</span>
+                                <span>{item.value}</span>
+                              </div>
+                              <div
+                                className={cn(
+                                  "mt-2 h-2 rounded-full",
+                                  isDark ? "bg-white/10" : "bg-slate-200"
+                                )}
+                              >
+                                <div
+                                  className={cn("h-full rounded-full", item.tone)}
+                                  style={{ width: `${Math.min(100, (item.value / total) * 100)}%` }}
+                                />
+                              </div>
+                              {index < cascade.length - 1 && (
+                                <div
+                                  className={cn(
+                                    "absolute -bottom-3 left-0 right-0 h-px",
+                                    isDark ? "bg-white/10" : "bg-slate-200"
+                                  )}
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "rounded-2xl border px-4 py-4",
+                    isDark
+                      ? "border-white/10 bg-black/30 text-zinc-100"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                  )}
+                >
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                    Indicadores de entrega
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {[
+                      {
+                        label: "Conclusao geral",
+                        value: `${summary.avg.toFixed(0)}%`,
+                        tone: isDark
+                          ? "from-purple-500/30 to-indigo-500/20 text-purple-200"
+                          : "from-purple-50 to-indigo-50 text-purple-700",
+                      },
+                      {
+                        label: "No prazo",
+                        value: timelineSummary.onTime,
+                        tone: isDark
+                          ? "from-emerald-500/30 to-teal-500/20 text-emerald-200"
+                          : "from-emerald-50 to-teal-50 text-emerald-700",
+                      },
+                      {
+                        label: "Fora do prazo",
+                        value: timelineSummary.late,
+                        tone: isDark
+                          ? "from-rose-500/30 to-orange-500/20 text-rose-200"
+                          : "from-rose-50 to-orange-50 text-rose-700",
+                      },
+                      {
+                        label: "Ameaca ao prazo",
+                        value: timelineSummary.atRisk,
+                        tone: isDark
+                          ? "from-amber-500/30 to-rose-500/20 text-amber-200"
+                          : "from-amber-50 to-rose-50 text-amber-700",
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className={cn(
+                          "rounded-2xl border px-4 py-3 text-sm",
+                          isDark
+                            ? "border-white/10 bg-gradient-to-br text-zinc-100"
+                            : "border-slate-200 bg-gradient-to-br text-slate-700",
+                          item.tone
+                        )}
+                      >
+                        <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                          {item.label}
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
           {goals.length === 0 ? (
@@ -564,7 +786,14 @@ export default function MetasPage() {
                         </p>
                       </div>
                       <div className="text-right text-xs text-zinc-500">
-                        Meta alvo: {goal.target_value} {goal.target_unit ?? ""}
+                        <div>
+                          Meta alvo: {goal.target_value} {goal.target_unit ?? ""}
+                        </div>
+                        {goal.due_date ? (
+                          <div className="mt-1">
+                            Prazo: {new Date(goal.due_date).toLocaleDateString("pt-BR")}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     {goal.description && (
