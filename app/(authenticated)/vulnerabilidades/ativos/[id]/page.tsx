@@ -313,6 +313,58 @@ export default function VulnerabilidadeAtivoPage() {
       .sort((a, b) => a.requested_at.localeCompare(b.requested_at));
   }
 
+  function buildTimeline(entry: LinkEntry, retestHistory: RetestRecord[]) {
+    const items: Array<{ label: string; date: string; tone: "info" | "success" | "danger" }> = [];
+    const occurrenceDates = [...entry.occurrenceDates].sort();
+    const resolvedDates = [...entry.resolvedDates].sort();
+
+    occurrenceDates.forEach((date, index) => {
+      items.push({
+        label: index === 0 ? "Detectada" : "Reaberta",
+        date,
+        tone: "info",
+      });
+    });
+    resolvedDates.forEach((date) => {
+      items.push({ label: "Corrigida", date, tone: "success" });
+    });
+    retestHistory.forEach((retest) => {
+      if (retest.status === "requested") {
+        items.push({
+          label: "Reteste solicitado",
+          date: retest.requested_at,
+          tone: "info",
+        });
+        return;
+      }
+      items.push({
+        label: retest.status === "passed" ? "Reteste aprovado" : "Reteste falhou",
+        date: retest.retested_at ?? retest.requested_at,
+        tone: retest.status === "passed" ? "success" : "danger",
+      });
+    });
+
+    return items
+      .filter((item) => item.date)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function timelineTone(tone: "info" | "success" | "danger") {
+    if (tone === "success") {
+      return isDark
+        ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+        : "border-emerald-300 bg-emerald-50 text-emerald-700";
+    }
+    if (tone === "danger") {
+      return isDark
+        ? "border-rose-500/40 bg-rose-500/20 text-rose-200"
+        : "border-rose-300 bg-rose-50 text-rose-700";
+    }
+    return isDark
+      ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
+      : "border-purple-200 bg-purple-50 text-purple-700";
+  }
+
   return (
     <DashboardShell
       pageTitle="Detalhes do ativo"
@@ -533,23 +585,37 @@ export default function VulnerabilidadeAtivoPage() {
                     </div>
                     {(() => {
                       const retestHistory = getRetestHistory(vuln.id, server.id);
-                      if (retestHistory.length === 0) return null;
+                      const timelineItems = buildTimeline(entry, retestHistory);
+                      if (timelineItems.length === 0) return null;
                       return (
-                        <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
-                          {retestHistory.slice(-3).map((item) => (
-                            <div key={item.id}>
-                              Reteste{" "}
-                              {item.status === "requested"
-                                ? "solicitado"
-                                : item.status === "passed"
-                                ? "corrigido"
-                                : "falhou"}{" "}
-                              em {formatDate(item.requested_at)}
-                              {item.retested_at
-                                ? ` · Resultado em ${formatDate(item.retested_at)}`
-                                : ""}
-                            </div>
-                          ))}
+                        <div className="mt-3">
+                          <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                            Linha do tempo
+                          </p>
+                          <div
+                            className={cn(
+                              "mt-2 border-l border-dashed pl-4",
+                              isDark ? "border-white/10" : "border-slate-200"
+                            )}
+                          >
+                            {timelineItems.map((item, index) => (
+                              <div
+                                key={`${server.id}-${vuln.id}-${item.label}-${item.date}-${index}`}
+                                className="relative pb-3 text-xs"
+                              >
+                                <span
+                                  className={cn(
+                                    "absolute -left-[9px] top-1.5 h-3 w-3 rounded-full border",
+                                    timelineTone(item.tone)
+                                  )}
+                                />
+                                <p className="text-[11px] text-zinc-500">
+                                  {formatDate(item.date)}
+                                </p>
+                                <p className="font-semibold">{item.label}</p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       );
                     })()}
