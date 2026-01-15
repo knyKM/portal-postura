@@ -563,7 +563,7 @@ export default function VulnerabilidadesPage() {
           />
           <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
             <span>Campos: id, title, severity, status, server, ip, env, score, occurrences.</span>
-            <span>Exemplos: id:VULN-001, status:corrigida, env:Produção, score>=8.</span>
+            <span>Exemplos: id:VULN-001, status:corrigida, env:Produção, score&gt;=8.</span>
           </div>
         </CardContent>
       </Card>
