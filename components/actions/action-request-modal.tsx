@@ -440,7 +440,7 @@ export function ActionRequestModal({
                         </span>
                         <a
                           href={`data:text/csv;charset=utf-8,${encodeURIComponent(
-                            record.payload?.assigneeCsvData ?? ""
+                            `\uFEFF${record.payload?.assigneeCsvData ?? ""}`
                           )}`}
                           download={record.payload?.assigneeCsvFileName ?? "assignee-bulk.csv"}
                           className={cn(

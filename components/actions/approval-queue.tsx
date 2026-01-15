@@ -186,7 +186,9 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
               <div className="mt-2 space-y-2 text-sm">
                 <p>Arquivo de carga: {bulkCsvName ?? "template de carga"}</p>
                 <a
-                  href={`data:text/csv;charset=utf-8,${encodeURIComponent(bulkCsvData)}`}
+                  href={`data:text/csv;charset=utf-8,${encodeURIComponent(
+                    `\uFEFF${bulkCsvData}`
+                  )}`}
                   download={bulkCsvName ?? "assignee-bulk.csv"}
                   className={cn(
                     "inline-flex items-center justify-center rounded-xl border px-3 py-1 text-xs font-semibold",

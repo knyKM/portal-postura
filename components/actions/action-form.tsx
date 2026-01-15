@@ -278,7 +278,7 @@ export function ActionForm(props: ActionFormProps) {
         idsFileInputRef.current.value = "";
       }
     };
-    reader.readAsText(file);
+    reader.readAsText(file, "utf-8");
   }
 
   function handleBulkFileChange(event: React.ChangeEvent<HTMLInputElement>) {
