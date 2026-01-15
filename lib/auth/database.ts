@@ -360,6 +360,253 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS vulnerabilities (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    description TEXT,
+    observations TEXT,
+    remediation TEXT,
+    affected TEXT,
+    score REAL DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vulnerability_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    environment TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vulnerability_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vulnerability_id TEXT NOT NULL,
+    server_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    occurrences INTEGER DEFAULT 1,
+    resolved_count INTEGER DEFAULT 0,
+    first_detected_at TEXT,
+    last_changed_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(vulnerability_id, server_id),
+    FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id),
+    FOREIGN KEY (server_id) REFERENCES vulnerability_servers(id)
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vulnerability_link_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vulnerability_id TEXT NOT NULL,
+    server_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_at TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id),
+    FOREIGN KEY (server_id) REFERENCES vulnerability_servers(id)
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_vulnerability_links_lookup
+  ON vulnerability_links (vulnerability_id, server_id);
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_vulnerability_events_lookup
+  ON vulnerability_link_events (vulnerability_id, server_id, event_at);
+`);
+
+type CountRow = { total: number };
+
+const vulnerabilityCount = db
+  .prepare<CountRow>("SELECT COUNT(*) as total FROM vulnerabilities")
+  .get();
+
+if ((vulnerabilityCount?.total ?? 0) === 0) {
+  const insertVulnerability = db.prepare(
+    `INSERT INTO vulnerabilities
+      (id, title, severity, description, observations, remediation, affected, score)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  insertVulnerability.run(
+    "vuln-001",
+    "CVE-2023-1023 · Exposição de credenciais",
+    "Crítica",
+    "Credenciais expostas em endpoint de diagnóstico.",
+    "O endpoint retorna variáveis sensíveis quando executado com um token desatualizado.",
+    "Desabilitar endpoint, rotacionar segredos e aplicar patch do fornecedor.",
+    "API Gateway · Auth Service · Batch Notifier",
+    9.4
+  );
+  insertVulnerability.run(
+    "vuln-002",
+    "CVE-2024-2211 · Execução remota",
+    "Alta",
+    "Falha em biblioteca de parsing utilizada por serviços web.",
+    "A biblioteca aceita payloads maliciosos quando o parâmetro debug está ativo.",
+    "Atualizar dependência e bloquear upload de arquivos temporários.",
+    "Web Portal · Relatórios",
+    8.1
+  );
+  insertVulnerability.run(
+    "vuln-003",
+    "CVE-2022-7789 · Privilege escalation",
+    "Média",
+    "Permissões excessivas em serviço legado.",
+    "Contas de serviço com escopo amplo herdam permissões administrativas.",
+    "Revisar IAM e remover papéis não utilizados.",
+    "Legacy Jobs · Scheduler",
+    6.3
+  );
+  insertVulnerability.run(
+    "vuln-004",
+    "CVE-2021-4450 · Weak TLS config",
+    "Baixa",
+    "Cifragem fraca habilitada em servidores antigos.",
+    "TLS 1.0 habilitado em servidores de homologação.",
+    "Forçar TLS 1.2+ e revisar ciphers legados.",
+    "Homologação · Proxy",
+    4.2
+  );
+}
+
+const serverCount = db
+  .prepare<CountRow>("SELECT COUNT(*) as total FROM vulnerability_servers")
+  .get();
+
+if ((serverCount?.total ?? 0) === 0) {
+  const insertServer = db.prepare(
+    "INSERT INTO vulnerability_servers (id, name, ip, environment) VALUES (?, ?, ?, ?)"
+  );
+  for (let index = 0; index < 20; index += 1) {
+    const id = `srv-${String(index + 1).padStart(2, "0")}`;
+    insertServer.run(
+      id,
+      `server-${String(index + 1).padStart(2, "0")}`,
+      `10.10.${Math.floor(index / 5) + 1}.${11 + index}`,
+      index < 8 ? "Produção" : index < 14 ? "Homologação" : "Dev"
+    );
+  }
+}
+
+const linkCount = db
+  .prepare<CountRow>("SELECT COUNT(*) as total FROM vulnerability_links")
+  .get();
+
+if ((linkCount?.total ?? 0) === 0) {
+  const insertLink = db.prepare(
+    `INSERT INTO vulnerability_links
+      (vulnerability_id, server_id, status, occurrences, resolved_count, first_detected_at, last_changed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  const insertEvent = db.prepare(
+    `INSERT INTO vulnerability_link_events
+      (vulnerability_id, server_id, event_type, event_at)
+      VALUES (?, ?, ?, ?)`
+  );
+
+  const addEvent = (
+    vulnerabilityId: string,
+    serverId: string,
+    type: string,
+    when: string
+  ) => {
+    insertEvent.run(vulnerabilityId, serverId, type, when);
+  };
+
+  insertLink.run(
+    "vuln-001",
+    "srv-01",
+    "active",
+    1,
+    0,
+    "2026-01-15T10:14:00",
+    "2026-01-15T10:14:00"
+  );
+  addEvent("vuln-001", "srv-01", "detected", "2026-01-15T10:14:00");
+
+  insertLink.run(
+    "vuln-001",
+    "srv-02",
+    "resolved",
+    1,
+    1,
+    "2026-01-10T09:02:00",
+    "2026-01-12T08:20:00"
+  );
+  addEvent("vuln-001", "srv-02", "detected", "2026-01-10T09:02:00");
+  addEvent("vuln-001", "srv-02", "resolved", "2026-01-12T08:20:00");
+
+  insertLink.run(
+    "vuln-001",
+    "srv-03",
+    "active",
+    2,
+    1,
+    "2026-01-11T13:22:00",
+    "2026-01-14T18:02:00"
+  );
+  addEvent("vuln-001", "srv-03", "detected", "2026-01-11T13:22:00");
+  addEvent("vuln-001", "srv-03", "resolved", "2026-01-12T16:40:00");
+  addEvent("vuln-001", "srv-03", "reopened", "2026-01-14T18:02:00");
+
+  insertLink.run(
+    "vuln-002",
+    "srv-05",
+    "active",
+    1,
+    0,
+    "2026-01-15T09:48:00",
+    "2026-01-15T09:48:00"
+  );
+  addEvent("vuln-002", "srv-05", "detected", "2026-01-15T09:48:00");
+
+  insertLink.run(
+    "vuln-002",
+    "srv-06",
+    "resolved",
+    2,
+    2,
+    "2026-01-06T10:05:00",
+    "2026-01-10T16:30:00"
+  );
+  addEvent("vuln-002", "srv-06", "detected", "2026-01-06T10:05:00");
+  addEvent("vuln-002", "srv-06", "resolved", "2026-01-07T08:20:00");
+  addEvent("vuln-002", "srv-06", "reopened", "2026-01-09T14:50:00");
+  addEvent("vuln-002", "srv-06", "resolved", "2026-01-10T16:30:00");
+
+  insertLink.run(
+    "vuln-003",
+    "srv-10",
+    "resolved",
+    1,
+    1,
+    "2026-01-06T12:40:00",
+    "2026-01-08T14:12:00"
+  );
+  addEvent("vuln-003", "srv-10", "detected", "2026-01-06T12:40:00");
+  addEvent("vuln-003", "srv-10", "resolved", "2026-01-08T14:12:00");
+
+  insertLink.run(
+    "vuln-004",
+    "srv-15",
+    "active",
+    1,
+    0,
+    "2026-01-13T13:40:00",
+    "2026-01-13T13:40:00"
+  );
+  addEvent("vuln-004", "srv-15", "detected", "2026-01-13T13:40:00");
+}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS idea_suggestions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,

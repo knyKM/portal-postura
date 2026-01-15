@@ -37,145 +37,21 @@ type LinkEntry = {
   resolvedDates: string[];
 };
 
-const demoVulnerabilities: Vulnerability[] = [
-  {
-    id: "vuln-001",
-    title: "CVE-2023-1023 · Exposição de credenciais",
-    severity: "Crítica",
-    description: "Credenciais expostas em endpoint de diagnóstico.",
-    observations:
-      "O endpoint retorna variáveis sensíveis quando executado com um token desatualizado.",
-    remediation:
-      "Desabilitar endpoint, rotacionar segredos e aplicar patch do fornecedor.",
-    affected: "API Gateway · Auth Service · Batch Notifier",
-    score: 9.4,
-  },
-  {
-    id: "vuln-002",
-    title: "CVE-2024-2211 · Execução remota",
-    severity: "Alta",
-    description: "Falha em biblioteca de parsing utilizada por serviços web.",
-    observations:
-      "A biblioteca aceita payloads maliciosos quando o parâmetro debug está ativo.",
-    remediation:
-      "Atualizar dependência e bloquear upload de arquivos temporários.",
-    affected: "Web Portal · Relatórios",
-    score: 8.1,
-  },
-  {
-    id: "vuln-003",
-    title: "CVE-2022-7789 · Privilege escalation",
-    severity: "Média",
-    description: "Permissões excessivas em serviço legado.",
-    observations:
-      "Contas de serviço com escopo amplo herdam permissões administrativas.",
-    remediation:
-      "Revisar IAM e remover papéis não utilizados.",
-    affected: "Legacy Jobs · Scheduler",
-    score: 6.3,
-  },
-  {
-    id: "vuln-004",
-    title: "CVE-2021-4450 · Weak TLS config",
-    severity: "Baixa",
-    description: "Cifragem fraca habilitada em servidores antigos.",
-    observations:
-      "TLS 1.0 habilitado em servidores de homologação.",
-    remediation:
-      "Forçar TLS 1.2+ e revisar ciphers legados.",
-    affected: "Homologação · Proxy",
-    score: 4.2,
-  },
-];
+type LinkRecord = {
+  vulnerability_id: string;
+  server_id: string;
+  status: "active" | "resolved";
+  occurrences: number;
+  resolved_count: number;
+  first_detected_at: string | null;
+  last_changed_at: string | null;
+};
 
-const demoServers: Server[] = Array.from({ length: 20 }, (_, index) => {
-  const id = `srv-${String(index + 1).padStart(2, "0")}`;
-  return {
-    id,
-    name: `server-${String(index + 1).padStart(2, "0")}`,
-    ip: `10.10.${Math.floor(index / 5) + 1}.${11 + index}`,
-    environment: index < 8 ? "Produção" : index < 14 ? "Homologação" : "Dev",
-  };
-});
-
-const demoServerOwners: Record<string, Record<string, string>> = demoServers.reduce(
-  (acc, server, index) => {
-    const ownerSuffix = String(index + 1).padStart(2, "0");
-    const values: Record<string, string> = {};
-    ASSIGNEE_CUSTOM_FIELDS.forEach((field, fieldIndex) => {
-      values[field.id] = `Responsável ${fieldIndex + 1}-${ownerSuffix}`;
-    });
-    acc[server.id] = values;
-    return acc;
-  },
-  {} as Record<string, Record<string, string>>
-);
-
-const initialLinks: Record<string, Record<string, LinkEntry>> = {
-  "vuln-001": {
-    "srv-01": {
-      status: "active",
-      occurrences: 1,
-      resolvedCount: 0,
-      lastChangedAt: "2026-01-15 10:14",
-      occurrenceDates: ["2026-01-15 10:14"],
-      resolvedDates: [],
-    },
-    "srv-02": {
-      status: "resolved",
-      occurrences: 1,
-      resolvedCount: 1,
-      lastChangedAt: "2026-01-12 08:20",
-      occurrenceDates: ["2026-01-10 09:02"],
-      resolvedDates: ["2026-01-12 08:20"],
-    },
-    "srv-03": {
-      status: "active",
-      occurrences: 2,
-      resolvedCount: 1,
-      lastChangedAt: "2026-01-14 18:02",
-      occurrenceDates: ["2026-01-11 13:22", "2026-01-14 18:02"],
-      resolvedDates: ["2026-01-12 16:40"],
-    },
-  },
-  "vuln-002": {
-    "srv-05": {
-      status: "active",
-      occurrences: 1,
-      resolvedCount: 0,
-      lastChangedAt: "2026-01-15 09:48",
-      occurrenceDates: ["2026-01-15 09:48"],
-      resolvedDates: [],
-    },
-    "srv-06": {
-      status: "resolved",
-      occurrences: 2,
-      resolvedCount: 2,
-      lastChangedAt: "2026-01-10 16:30",
-      occurrenceDates: ["2026-01-06 10:05", "2026-01-09 14:50"],
-      resolvedDates: ["2026-01-07 08:20", "2026-01-10 16:30"],
-    },
-  },
-  "vuln-003": {
-    "srv-10": {
-      status: "resolved",
-      occurrences: 1,
-      resolvedCount: 1,
-      lastChangedAt: "2026-01-08 14:12",
-      occurrenceDates: ["2026-01-06 12:40"],
-      resolvedDates: ["2026-01-08 14:12"],
-    },
-  },
-  "vuln-004": {
-    "srv-15": {
-      status: "active",
-      occurrences: 1,
-      resolvedCount: 0,
-      lastChangedAt: "2026-01-13 13:40",
-      occurrenceDates: ["2026-01-13 13:40"],
-      resolvedDates: [],
-    },
-  },
+type LinkEventRecord = {
+  vulnerability_id: string;
+  server_id: string;
+  event_type: "detected" | "resolved" | "reopened";
+  event_at: string;
 };
 
 export default function VulnerabilidadesPage() {
@@ -184,9 +60,13 @@ export default function VulnerabilidadesPage() {
   const isDark = theme === "dark";
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
+  const [servers, setServers] = useState<Server[]>([]);
   const [links, setLinks] = useState<Record<string, Record<string, LinkEntry>>>(
-    initialLinks
+    {}
   );
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [selectedServerByVuln, setSelectedServerByVuln] = useState<
     Record<string, string>
   >({});
@@ -210,11 +90,25 @@ export default function VulnerabilidadesPage() {
 
   const serverById = useMemo(
     () =>
-      demoServers.reduce<Record<string, Server>>((acc, server) => {
+      servers.reduce<Record<string, Server>>((acc, server) => {
         acc[server.id] = server;
         return acc;
       }, {}),
-    []
+    [servers]
+  );
+
+  const demoServerOwners: Record<string, Record<string, string>> = useMemo(
+    () =>
+      servers.reduce((acc, server, index) => {
+        const ownerSuffix = String(index + 1).padStart(2, "0");
+        const values: Record<string, string> = {};
+        ASSIGNEE_CUSTOM_FIELDS.forEach((field, fieldIndex) => {
+          values[field.id] = `Responsável ${fieldIndex + 1}-${ownerSuffix}`;
+        });
+        acc[server.id] = values;
+        return acc;
+      }, {} as Record<string, Record<string, string>>),
+    [servers]
   );
   const severityBadgeClasses: Record<Vulnerability["severity"], string> = {
     Crítica: "bg-rose-500/15 text-rose-300 border-rose-500/40",
@@ -239,57 +133,118 @@ export default function VulnerabilidadesPage() {
   }
 
   function ensureEntry(vulnId: string, serverId: string) {
-    setLinks((prev) => {
-      const current = prev[vulnId] ?? {};
-      const entry = current[serverId];
-      const now = new Date().toLocaleString("pt-BR");
-      const nextEntry: LinkEntry = entry
-        ? {
-            ...entry,
-            status: "active",
-            occurrences: entry.occurrences + 1,
-            lastChangedAt: now,
-            occurrenceDates: [...entry.occurrenceDates, now],
-          }
-        : {
-            status: "active",
-            occurrences: 1,
-            resolvedCount: 0,
-            lastChangedAt: now,
-            occurrenceDates: [now],
-            resolvedDates: [],
-          };
-      return {
-        ...prev,
-        [vulnId]: {
-          ...current,
-          [serverId]: nextEntry,
-        },
-      };
-    });
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao vincular ativo.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao vincular ativo.");
+      }
+    })();
   }
 
   function resolveEntry(vulnId: string, serverId: string) {
-    setLinks((prev) => {
-      const current = prev[vulnId] ?? {};
-      const entry = current[serverId];
-      if (!entry) return prev;
-      const now = new Date().toLocaleString("pt-BR");
-      return {
-        ...prev,
-        [vulnId]: {
-          ...current,
-          [serverId]: {
-            ...entry,
-            status: "resolved",
-            resolvedCount: entry.resolvedCount + 1,
-            lastChangedAt: now,
-            resolvedDates: [...entry.resolvedDates, now],
-          },
-        },
-      };
-    });
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao marcar correção.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao marcar correção.");
+      }
+    })();
   }
+
+  function formatDate(value?: string | null) {
+    if (!value) return "-";
+    return new Date(value).toLocaleString("pt-BR");
+  }
+
+  function buildLinkMap(linkRecords: LinkRecord[], eventRecords: LinkEventRecord[]) {
+    const eventMap = new Map<
+      string,
+      { occurrenceDates: string[]; resolvedDates: string[] }
+    >();
+    eventRecords.forEach((event) => {
+      const key = `${event.vulnerability_id}::${event.server_id}`;
+      const entry = eventMap.get(key) ?? {
+        occurrenceDates: [],
+        resolvedDates: [],
+      };
+      if (event.event_type === "resolved") {
+        entry.resolvedDates.push(event.event_at);
+      } else {
+        entry.occurrenceDates.push(event.event_at);
+      }
+      eventMap.set(key, entry);
+    });
+
+    return linkRecords.reduce<Record<string, Record<string, LinkEntry>>>(
+      (acc, record) => {
+        const key = `${record.vulnerability_id}::${record.server_id}`;
+        const events = eventMap.get(key) ?? {
+          occurrenceDates: [],
+          resolvedDates: [],
+        };
+        const entry: LinkEntry = {
+          status: record.status,
+          occurrences: record.occurrences,
+          resolvedCount: record.resolved_count,
+          lastChangedAt: record.last_changed_at ?? record.first_detected_at ?? "",
+          occurrenceDates: events.occurrenceDates,
+          resolvedDates: events.resolvedDates,
+        };
+        const current = acc[record.vulnerability_id] ?? {};
+        current[record.server_id] = entry;
+        acc[record.vulnerability_id] = current;
+        return acc;
+      },
+      {}
+    );
+  }
+
+  async function fetchData() {
+    setDataLoading(true);
+    setDataError(null);
+    try {
+      const response = await fetch("/api/vulnerabilidades");
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao carregar vulnerabilidades.");
+      }
+      setVulnerabilities(Array.isArray(data?.vulnerabilities) ? data.vulnerabilities : []);
+      setServers(Array.isArray(data?.servers) ? data.servers : []);
+      const linkRecords = Array.isArray(data?.links) ? (data.links as LinkRecord[]) : [];
+      const eventRecords = Array.isArray(data?.events) ? (data.events as LinkEventRecord[]) : [];
+      setLinks(buildLinkMap(linkRecords, eventRecords));
+    } catch (err) {
+      setDataError(err instanceof Error ? err.message : "Falha ao carregar vulnerabilidades.");
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!authorized) return;
+    void fetchData();
+  }, [authorized]);
 
   if (loading) {
     return (
@@ -310,7 +265,28 @@ export default function VulnerabilidadesPage() {
     >
       <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
         <div className="space-y-4">
-          {demoVulnerabilities.map((vuln) => {
+          {dataError && (
+            <div
+              className={cn(
+                "rounded-2xl border px-4 py-3 text-sm",
+                isDark
+                  ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+              )}
+            >
+              {dataError}
+            </div>
+          )}
+          {dataLoading ? (
+            <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
+              Carregando vulnerabilidades...
+            </p>
+          ) : vulnerabilities.length === 0 ? (
+            <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
+              Nenhuma vulnerabilidade cadastrada.
+            </p>
+          ) : (
+            vulnerabilities.map((vuln) => {
             const entries = links[vuln.id] ?? {};
             const activeServers = Object.entries(entries).filter(
               ([, entry]) => entry.status === "active"
@@ -350,14 +326,14 @@ export default function VulnerabilidadesPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <select
-                        value={selectedServerByVuln[vuln.id] ?? ""}
-                        onChange={(event) =>
-                          setSelectedServerByVuln((prev) => ({
-                            ...prev,
-                            [vuln.id]: event.target.value,
-                          }))
-                        }
+                        <select
+                          value={selectedServerByVuln[vuln.id] ?? ""}
+                          onChange={(event) =>
+                            setSelectedServerByVuln((prev) => ({
+                              ...prev,
+                              [vuln.id]: event.target.value,
+                            }))
+                          }
                         className={cn(
                           "rounded-xl border px-3 py-2 text-xs",
                           isDark
@@ -366,7 +342,7 @@ export default function VulnerabilidadesPage() {
                         )}
                       >
                         <option value="">Selecionar servidor</option>
-                        {demoServers.map((server) => (
+                        {servers.map((server) => (
                           <option key={server.id} value={server.id}>
                             {server.name} · {server.ip}
                           </option>
@@ -432,7 +408,7 @@ export default function VulnerabilidadesPage() {
                                       {entry.occurrences > 1 ? "s" : ""}
                                     </p>
                                     <p className="text-[11px] text-zinc-500">
-                                      Última: {entry.occurrenceDates.at(-1) ?? "-"}
+                                      Última: {formatDate(entry.occurrenceDates.at(-1))}
                                     </p>
                                   </div>
                                   <Button
@@ -498,7 +474,7 @@ export default function VulnerabilidadesPage() {
                                       {entry.occurrences > 1 ? "s" : ""}
                                     </p>
                                     <p className="text-[11px] text-zinc-500">
-                                      Última correção: {entry.resolvedDates.at(-1) ?? "-"}
+                                      Última correção: {formatDate(entry.resolvedDates.at(-1))}
                                     </p>
                                   </div>
                                   <Button
@@ -532,7 +508,8 @@ export default function VulnerabilidadesPage() {
                 </CardContent>
               </Card>
             );
-          })}
+          })
+          )}
         </div>
 
         <Card
@@ -547,12 +524,14 @@ export default function VulnerabilidadesPage() {
             <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
               Servidores de teste
             </p>
-            <h3 className="text-lg font-semibold">Catálogo de ativos (20)</h3>
+            <h3 className="text-lg font-semibold">
+              Catálogo de ativos ({servers.length})
+            </h3>
             <p className="text-sm text-zinc-400">
               Use estes servidores para simular vínculo, correção e reabertura.
             </p>
             <div className="mt-3 space-y-2">
-              {demoServers.map((server) => (
+              {servers.map((server) => (
                 <div
                   key={server.id}
                   className={cn(
