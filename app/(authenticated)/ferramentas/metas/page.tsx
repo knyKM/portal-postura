@@ -743,6 +743,7 @@ export default function MetasPage() {
           )}
         </div>
       </div>
+      </div>
     </DashboardShell>
   );
 }
