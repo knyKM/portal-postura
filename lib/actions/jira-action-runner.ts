@@ -10,7 +10,12 @@ import {
   listQueuedActionExecutionJobs,
   getRunningJobsCount,
 } from "@/lib/actions/action-job-service";
-import { ASSIGNEE_CUSTOM_FIELDS, normalizeAssigneeLabel } from "@/lib/actions/assignee-fields";
+import {
+  ASSIGNEE_CUSTOM_FIELDS,
+  ASSIGNEE_MULTI_USER_FIELDS,
+  normalizeAssigneeLabel,
+  toMultiUserValues,
+} from "@/lib/actions/assignee-fields";
 
 const DEFAULT_MAX_JIRA_RESULTS = 200;
 const DEFAULT_MAX_PARALLEL_JOBS = 3;
@@ -445,8 +450,8 @@ export async function executeActionJob(jobId: number, requestId: number) {
       const payload = parsePayload(targetRequest.payload);
       const entries = parseAssigneeBulkCsv(payload?.assigneeCsvData ?? "");
       bulkFieldsByIssue = new Map(
-        entries.map((entry) => [entry.issueKey, entry.fields])
-      );
+    entries.map((entry) => [entry.issueKey, entry.fields])
+  );
       issueKeys = Array.from(bulkFieldsByIssue.keys());
     } else {
       issueKeys = await getIssueKeys(
@@ -485,13 +490,30 @@ export async function executeActionJob(jobId: number, requestId: number) {
         await transitionIssue(jiraConfig, key, targetStatus);
       } else if (targetRequest.action_type === "assignee") {
         if (targetRequest.filter_mode === "bulk") {
-          const fields = bulkFieldsByIssue?.get(key) ?? {};
-          if (!Object.keys(fields).length) {
+          const rawFields = bulkFieldsByIssue?.get(key) ?? {};
+          if (!Object.keys(rawFields).length) {
             processedCount += 1;
             updateJobProgress({ id: jobId, processedIssues: processedCount });
             continue;
           }
-          await updateIssueFields(jiraConfig, key, fields);
+          const normalizedFields: Record<string, unknown> = {};
+          Object.entries(rawFields).forEach(([fieldId, value]) => {
+            if (value === null) {
+              normalizedFields[fieldId] = null;
+              return;
+            }
+            if (ASSIGNEE_MULTI_USER_FIELDS.has(fieldId) && typeof value === "string") {
+              normalizedFields[fieldId] = toMultiUserValues(value);
+              return;
+            }
+            normalizedFields[fieldId] = value;
+          });
+          if (!Object.keys(normalizedFields).length) {
+            processedCount += 1;
+            updateJobProgress({ id: jobId, processedIssues: processedCount });
+            continue;
+          }
+          await updateIssueFields(jiraConfig, key, normalizedFields);
         } else {
           const payload = parsePayload(targetRequest.payload);
           const fields: Record<string, unknown> = {};
@@ -503,7 +525,11 @@ export async function executeActionJob(jobId: number, requestId: number) {
               return;
             }
             if (field.value !== undefined) {
-              fields[fieldId] = field.value;
+              if (ASSIGNEE_MULTI_USER_FIELDS.has(fieldId)) {
+                fields[fieldId] = toMultiUserValues(String(field.value));
+              } else {
+                fields[fieldId] = field.value;
+              }
             }
           });
           if (!Object.keys(fields).length) {

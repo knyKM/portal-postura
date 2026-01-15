@@ -20,3 +20,22 @@ export const ASSIGNEE_CUSTOM_FIELDS = [
 export function normalizeAssigneeLabel(label: string) {
   return label.trim().toLowerCase();
 }
+
+export const ASSIGNEE_MULTI_USER_FIELDS = new Set([
+  "customfield_13200",
+  "customfield_13202",
+  "customfield_13205",
+  "customfield_12301",
+  "customfield_12302",
+  "customfield_13201",
+  "customfield_13203",
+  "customfield_13204",
+]);
+
+export function toMultiUserValues(raw: string) {
+  return raw
+    .split("|")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((name) => ({ name }));
+}
