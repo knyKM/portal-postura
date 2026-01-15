@@ -128,6 +128,11 @@ export default function VulnerabilidadeAtivoPage() {
     Baixa: "bg-emerald-500/15 text-emerald-200 border-emerald-500/40",
   };
 
+  useEffect(() => {
+    if (!authorized) return;
+    void fetchData();
+  }, [authorized]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#050816] text-sm text-zinc-400">
@@ -220,11 +225,6 @@ export default function VulnerabilidadeAtivoPage() {
       setDataLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!authorized) return;
-    void fetchData();
-  }, [authorized]);
 
   return (
     <DashboardShell
