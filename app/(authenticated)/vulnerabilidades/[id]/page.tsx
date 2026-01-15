@@ -53,6 +53,15 @@ type LinkEventRecord = {
   event_at: string;
 };
 
+type RetestRecord = {
+  id: number;
+  vulnerability_id: string;
+  server_id: string;
+  status: "requested" | "passed" | "failed";
+  requested_at: string;
+  retested_at: string | null;
+};
+
 export default function VulnerabilidadeDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -65,6 +74,7 @@ export default function VulnerabilidadeDetailPage() {
   const [links, setLinks] = useState<Record<string, Record<string, LinkEntry>>>(
     {}
   );
+  const [retests, setRetests] = useState<RetestRecord[]>([]);
   const [dataError, setDataError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
@@ -195,12 +205,59 @@ export default function VulnerabilidadeDetailPage() {
       setServers(Array.isArray(data?.servers) ? data.servers : []);
       const linkRecords = Array.isArray(data?.links) ? (data.links as LinkRecord[]) : [];
       const eventRecords = Array.isArray(data?.events) ? (data.events as LinkEventRecord[]) : [];
+      setRetests(Array.isArray(data?.retests) ? (data.retests as RetestRecord[]) : []);
       setLinks(buildLinkMap(linkRecords, eventRecords));
     } catch (err) {
       setDataError(err instanceof Error ? err.message : "Falha ao carregar vulnerabilidades.");
     } finally {
       setDataLoading(false);
     }
+  }
+
+  function requestRetest(vulnId: string, serverId: string) {
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/retest/request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao solicitar reteste.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao solicitar reteste.");
+      }
+    })();
+  }
+
+  function completeRetest(vulnId: string, serverId: string, result: "passed" | "failed") {
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/retest/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId, result }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao registrar reteste.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao registrar reteste.");
+      }
+    })();
+  }
+
+  function getRetestHistory(vulnId: string, serverId: string) {
+    return retests
+      .filter((item) => item.vulnerability_id === vulnId && item.server_id === serverId)
+      .sort((a, b) => a.requested_at.localeCompare(b.requested_at));
   }
 
   return (
@@ -303,6 +360,8 @@ export default function VulnerabilidadeDetailPage() {
               Object.entries(entries).map(([serverId, entry]) => {
                 const server = serverById[serverId];
                 if (!server) return null;
+                const retestHistory = getRetestHistory(vulnerability.id, serverId);
+                const latestRetest = retestHistory.at(-1);
                 return (
                   <div
                     key={`${vulnerability.id}-${serverId}`}
@@ -330,19 +389,76 @@ export default function VulnerabilidadeDetailPage() {
                             ? entry.resolvedDates.map((date) => formatDate(date)).join(" · ")
                             : "-"}
                         </p>
-                      </div>
-                      <Link
-                        href={`/vulnerabilidades/ativos/${serverId}`}
-                        className={cn(
-                          "rounded-xl border px-3 py-2 text-[11px] font-semibold",
-                          isDark
-                            ? "border-white/10 text-zinc-200"
-                            : "border-slate-200 text-slate-700"
+                        {latestRetest && (
+                          <p className="text-[11px] text-zinc-500">
+                            Reteste: {latestRetest.status === "requested"
+                              ? "Solicitado"
+                              : latestRetest.status === "passed"
+                              ? "Corrigido"
+                              : "Falha"}{" "}
+                            · {formatDate(latestRetest.retested_at ?? latestRetest.requested_at)}
+                          </p>
                         )}
-                      >
-                        Ver ativo
-                      </Link>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-[11px]"
+                          onClick={() => requestRetest(vulnerability.id, serverId)}
+                        >
+                          Enviar para reteste
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-[11px]"
+                          onClick={() => completeRetest(vulnerability.id, serverId, "passed")}
+                        >
+                          Reteste OK
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-[11px]"
+                          onClick={() => completeRetest(vulnerability.id, serverId, "failed")}
+                        >
+                          Reteste falhou
+                        </Button>
+                        <Link
+                          href={`/vulnerabilidades/ativos/${serverId}`}
+                          className={cn(
+                            "rounded-xl border px-3 py-2 text-[11px] font-semibold",
+                            isDark
+                              ? "border-white/10 text-zinc-200"
+                              : "border-slate-200 text-slate-700"
+                          )}
+                        >
+                          Ver ativo
+                        </Link>
+                      </div>
                     </div>
+                    {retestHistory.length > 0 && (
+                      <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                        {retestHistory.slice(-3).map((item) => (
+                          <div key={item.id}>
+                            Reteste{" "}
+                            {item.status === "requested"
+                              ? "solicitado"
+                              : item.status === "passed"
+                              ? "corrigido"
+                              : "falhou"}{" "}
+                            em {formatDate(item.requested_at)}
+                            {item.retested_at
+                              ? ` · Resultado em ${formatDate(item.retested_at)}`
+                              : ""}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })

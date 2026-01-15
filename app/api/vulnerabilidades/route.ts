@@ -5,6 +5,7 @@ import {
   listVulnerabilityServers,
   listVulnerabilityLinks,
   listVulnerabilityEvents,
+  listVulnerabilityRetests,
 } from "@/lib/vulnerabilities/vulnerability-service";
 
 export async function GET(request: Request) {
@@ -18,5 +19,6 @@ export async function GET(request: Request) {
     servers: listVulnerabilityServers(),
     links: listVulnerabilityLinks(),
     events: listVulnerabilityEvents(),
+    retests: listVulnerabilityRetests(),
   });
 }

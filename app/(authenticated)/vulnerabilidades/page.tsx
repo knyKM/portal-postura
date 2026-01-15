@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/theme-provider";
 import { ASSIGNEE_CUSTOM_FIELDS } from "@/lib/actions/assignee-fields";
@@ -37,6 +38,17 @@ type LinkEntry = {
   resolvedDates: string[];
 };
 
+type QueryFilter = {
+  field: string;
+  op: ":" | "=" | ">" | "<" | ">=" | "<=";
+  value: string;
+};
+
+type ParsedQuery = {
+  terms: string[];
+  filters: QueryFilter[];
+};
+
 type LinkRecord = {
   vulnerability_id: string;
   server_id: string;
@@ -54,6 +66,15 @@ type LinkEventRecord = {
   event_at: string;
 };
 
+type RetestRecord = {
+  id: number;
+  vulnerability_id: string;
+  server_id: string;
+  status: "requested" | "passed" | "failed";
+  requested_at: string;
+  retested_at: string | null;
+};
+
 export default function VulnerabilidadesPage() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -65,11 +86,13 @@ export default function VulnerabilidadesPage() {
   const [links, setLinks] = useState<Record<string, Record<string, LinkEntry>>>(
     {}
   );
+  const [retests, setRetests] = useState<RetestRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [selectedServerByVuln, setSelectedServerByVuln] = useState<
     Record<string, string>
   >({});
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -172,6 +195,46 @@ export default function VulnerabilidadesPage() {
     })();
   }
 
+  function requestRetest(vulnId: string, serverId: string) {
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/retest/request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao solicitar reteste.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao solicitar reteste.");
+      }
+    })();
+  }
+
+  function completeRetest(vulnId: string, serverId: string, result: "passed" | "failed") {
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/retest/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId, result }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao registrar reteste.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao registrar reteste.");
+      }
+    })();
+  }
+
   function formatDate(value?: string | null) {
     if (!value) return "-";
     return new Date(value).toLocaleString("pt-BR");
@@ -233,6 +296,7 @@ export default function VulnerabilidadesPage() {
       setServers(Array.isArray(data?.servers) ? data.servers : []);
       const linkRecords = Array.isArray(data?.links) ? (data.links as LinkRecord[]) : [];
       const eventRecords = Array.isArray(data?.events) ? (data.events as LinkEventRecord[]) : [];
+      setRetests(Array.isArray(data?.retests) ? (data.retests as RetestRecord[]) : []);
       setLinks(buildLinkMap(linkRecords, eventRecords));
     } catch (err) {
       setDataError(err instanceof Error ? err.message : "Falha ao carregar vulnerabilidades.");
@@ -245,6 +309,205 @@ export default function VulnerabilidadesPage() {
     if (!authorized) return;
     void fetchData();
   }, [authorized]);
+
+  function getRetestHistory(vulnId: string, serverId: string) {
+    return retests
+      .filter((item) => item.vulnerability_id === vulnId && item.server_id === serverId)
+      .sort((a, b) => a.requested_at.localeCompare(b.requested_at));
+  }
+
+  function splitQuery(input: string) {
+    const tokens: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < input.length; i += 1) {
+      const char = input[i];
+      if (char === "\"") {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (!inQuotes && /\s/.test(char)) {
+        if (current.trim()) {
+          tokens.push(current.trim());
+        }
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    if (current.trim()) {
+      tokens.push(current.trim());
+    }
+    return tokens;
+  }
+
+  function parseQuery(input: string): ParsedQuery {
+    const tokens = splitQuery(input);
+    const filters: QueryFilter[] = [];
+    const terms: string[] = [];
+    tokens.forEach((token) => {
+      const match = token.match(/^([a-zA-Z_]+)(:|>=|<=|=|>|<)(.+)$/);
+      if (match) {
+        const [, rawField, op, rawValue] = match;
+        filters.push({
+          field: rawField.toLowerCase(),
+          op: op as QueryFilter["op"],
+          value: rawValue.trim(),
+        });
+      } else {
+        terms.push(token.toLowerCase());
+      }
+    });
+    return { terms, filters };
+  }
+
+  function matchesNumeric(value: number, filter: QueryFilter) {
+    const target = Number(filter.value.replace(",", "."));
+    if (Number.isNaN(target)) return true;
+    switch (filter.op) {
+      case ">":
+        return value > target;
+      case "<":
+        return value < target;
+      case ">=":
+        return value >= target;
+      case "<=":
+        return value <= target;
+      case "=":
+      case ":":
+      default:
+        return value === target;
+    }
+  }
+
+  const parsedQuery = useMemo(() => parseQuery(query), [query]);
+
+  const filteredVulnerabilities = useMemo(() => {
+    if (!parsedQuery.terms.length && !parsedQuery.filters.length) {
+      return vulnerabilities;
+    }
+
+    return vulnerabilities.filter((vuln) => {
+      const entries = links[vuln.id] ?? {};
+      const linkedServers = Object.entries(entries)
+        .map(([serverId, entry]) => {
+          const server = serverById[serverId];
+          if (!server) return null;
+          return { server, entry };
+        })
+        .filter(Boolean) as Array<{ server: Server; entry: LinkEntry }>;
+      const activeCount = linkedServers.filter(
+        ({ entry }) => entry.status === "active"
+      ).length;
+      const resolvedCount = linkedServers.filter(
+        ({ entry }) => entry.status === "resolved"
+      ).length;
+      const totalOccurrences = linkedServers.reduce(
+        (sum, { entry }) => sum + entry.occurrences,
+        0
+      );
+
+      const baseText = [
+        vuln.id,
+        vuln.title,
+        vuln.description,
+        vuln.observations,
+        vuln.remediation,
+        vuln.affected,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      const serverText = linkedServers
+        .map(({ server }) => `${server.id} ${server.name} ${server.ip} ${server.environment}`)
+        .join(" ")
+        .toLowerCase();
+
+      const termMatches = parsedQuery.terms.every(
+        (term) => baseText.includes(term) || serverText.includes(term)
+      );
+      if (!termMatches) return false;
+
+      return parsedQuery.filters.every((filter) => {
+        switch (filter.field) {
+          case "id":
+          case "vuln":
+            return vuln.id.toLowerCase().includes(filter.value.toLowerCase());
+          case "title":
+            return vuln.title.toLowerCase().includes(filter.value.toLowerCase());
+          case "severity":
+            return vuln.severity.toLowerCase().startsWith(filter.value.toLowerCase());
+          case "status": {
+            const normalized = filter.value.toLowerCase();
+            if (normalized === "open" || normalized === "aberta" || normalized === "ativo") {
+              return activeCount > 0;
+            }
+            if (normalized === "resolved" || normalized === "corrigida") {
+              return resolvedCount > 0;
+            }
+            return true;
+          }
+          case "server": {
+            const target = filter.value.toLowerCase();
+            return linkedServers.some(
+              ({ server }) =>
+                server.id.toLowerCase().includes(target) ||
+                server.name.toLowerCase().includes(target)
+            );
+          }
+          case "ip": {
+            const target = filter.value.toLowerCase();
+            return linkedServers.some(({ server }) => server.ip.toLowerCase().includes(target));
+          }
+          case "env":
+          case "environment": {
+            const target = filter.value.toLowerCase();
+            return linkedServers.some(({ server }) =>
+              server.environment.toLowerCase().includes(target)
+            );
+          }
+          case "score":
+            return matchesNumeric(vuln.score, filter);
+          case "occurrences":
+            return matchesNumeric(totalOccurrences, filter);
+          case "open":
+            return matchesNumeric(activeCount, filter);
+          case "resolved":
+            return matchesNumeric(resolvedCount, filter);
+          default:
+            return true;
+        }
+      });
+    });
+  }, [parsedQuery, vulnerabilities, links, serverById]);
+
+  const filteredServers = useMemo(() => {
+    if (!parsedQuery.terms.length && !parsedQuery.filters.length) {
+      return servers;
+    }
+    return servers.filter((server) => {
+      const baseText = `${server.id} ${server.name} ${server.ip} ${server.environment}`.toLowerCase();
+      const termMatches = parsedQuery.terms.every((term) => baseText.includes(term));
+      if (!termMatches) return false;
+
+      return parsedQuery.filters.every((filter) => {
+        switch (filter.field) {
+          case "server":
+          case "id":
+            return server.id.toLowerCase().includes(filter.value.toLowerCase());
+          case "ip":
+            return server.ip.toLowerCase().includes(filter.value.toLowerCase());
+          case "env":
+          case "environment":
+            return server.environment.toLowerCase().includes(filter.value.toLowerCase());
+          case "name":
+            return server.name.toLowerCase().includes(filter.value.toLowerCase());
+          default:
+            return true;
+        }
+      });
+    });
+  }, [parsedQuery, servers]);
 
   if (loading) {
     return (
@@ -263,6 +526,47 @@ export default function VulnerabilidadesPage() {
       pageTitle="Vulnerabilidades"
       pageSubtitle="Catálogo único com vínculos de ativos e histórico de correções."
     >
+      <Card
+        className={cn(
+          "mb-5 rounded-3xl border p-4",
+          isDark
+            ? "border-white/5 bg-[#050816]/80 text-white"
+            : "border-slate-200 bg-white text-slate-900"
+        )}
+      >
+        <CardContent className="p-0 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                Consulta
+              </p>
+              <h3 className="mt-1 text-lg font-semibold">
+                Busque por ID, texto ou filtros avançados
+              </h3>
+              <p className="mt-1 text-sm text-zinc-400">
+                Use uma linguagem simples para filtrar vulnerabilidades e ativos.
+              </p>
+            </div>
+            <div className="text-xs text-zinc-500">
+              {filteredVulnerabilities.length} resultado
+              {filteredVulnerabilities.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder='Ex: severity:Alta status:open server:"SRV-01" score>=7'
+            className={cn(
+              "h-11 rounded-2xl text-sm",
+              isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
+            )}
+          />
+          <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
+            <span>Campos: id, title, severity, status, server, ip, env, score, occurrences.</span>
+            <span>Exemplos: id:VULN-001, status:corrigida, env:Produção, score>=8.</span>
+          </div>
+        </CardContent>
+      </Card>
       <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
         <div className="space-y-4">
           {dataError && (
@@ -281,12 +585,12 @@ export default function VulnerabilidadesPage() {
             <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
               Carregando vulnerabilidades...
             </p>
-          ) : vulnerabilities.length === 0 ? (
+          ) : filteredVulnerabilities.length === 0 ? (
             <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
-              Nenhuma vulnerabilidade cadastrada.
+              Nenhuma vulnerabilidade encontrada.
             </p>
           ) : (
-            vulnerabilities.map((vuln) => {
+            filteredVulnerabilities.map((vuln) => {
             const entries = links[vuln.id] ?? {};
             const activeServers = Object.entries(entries).filter(
               ([, entry]) => entry.status === "active"
@@ -388,6 +692,8 @@ export default function VulnerabilidadesPage() {
                           {activeServers.map(([serverId, entry]) => {
                             const server = serverById[serverId];
                             if (!server) return null;
+                            const retestHistory = getRetestHistory(vuln.id, serverId);
+                            const latestRetest = retestHistory.at(-1);
                             return (
                               <div
                                 key={`${vuln.id}-${serverId}`}
@@ -410,6 +716,16 @@ export default function VulnerabilidadesPage() {
                                     <p className="text-[11px] text-zinc-500">
                                       Última: {formatDate(entry.occurrenceDates.at(-1))}
                                     </p>
+                                    {latestRetest && (
+                                      <p className="text-[11px] text-zinc-500">
+                                        Reteste: {latestRetest.status === "requested"
+                                          ? "Solicitado"
+                                          : latestRetest.status === "passed"
+                                          ? "Corrigido"
+                                          : "Falha"}{" "}
+                                        · {formatDate(latestRetest.retested_at ?? latestRetest.requested_at)}
+                                      </p>
+                                    )}
                                   </div>
                                   <Button
                                     type="button"
@@ -420,6 +736,35 @@ export default function VulnerabilidadesPage() {
                                   >
                                     Marcar corrigida
                                   </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl text-[11px]"
+                                    onClick={() => requestRetest(vuln.id, serverId)}
+                                  >
+                                    Enviar para reteste
+                                  </Button>
+                                  <div className="flex flex-col gap-1">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="rounded-xl text-[11px]"
+                                      onClick={() => completeRetest(vuln.id, serverId, "passed")}
+                                    >
+                                      Reteste OK
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="rounded-xl text-[11px]"
+                                      onClick={() => completeRetest(vuln.id, serverId, "failed")}
+                                    >
+                                      Reteste falhou
+                                    </Button>
+                                  </div>
                                   <Link
                                     href={`/vulnerabilidades/ativos/${serverId}`}
                                     className={cn(
@@ -432,6 +777,24 @@ export default function VulnerabilidadesPage() {
                                     Ver ativo
                                   </Link>
                                 </div>
+                                {retestHistory.length > 0 && (
+                                  <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                                    {retestHistory.slice(-3).map((item) => (
+                                      <div key={item.id}>
+                                        Reteste{" "}
+                                        {item.status === "requested"
+                                          ? "solicitado"
+                                          : item.status === "passed"
+                                          ? "corrigido"
+                                          : "falhou"}{" "}
+                                        em {formatDate(item.requested_at)}
+                                        {item.retested_at
+                                          ? ` · Resultado em ${formatDate(item.retested_at)}`
+                                          : ""}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -525,13 +888,13 @@ export default function VulnerabilidadesPage() {
               Servidores de teste
             </p>
             <h3 className="text-lg font-semibold">
-              Catálogo de ativos ({servers.length})
+              Catálogo de ativos ({filteredServers.length})
             </h3>
             <p className="text-sm text-zinc-400">
               Use estes servidores para simular vínculo, correção e reabertura.
             </p>
             <div className="mt-3 space-y-2">
-              {servers.map((server) => (
+              {filteredServers.map((server) => (
                 <div
                   key={server.id}
                   className={cn(

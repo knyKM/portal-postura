@@ -414,6 +414,20 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS vulnerability_retests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vulnerability_id TEXT NOT NULL,
+    server_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'requested',
+    requested_at TEXT NOT NULL,
+    retested_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id),
+    FOREIGN KEY (server_id) REFERENCES vulnerability_servers(id)
+  );
+`);
+
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_vulnerability_links_lookup
   ON vulnerability_links (vulnerability_id, server_id);
 `);
@@ -421,6 +435,11 @@ db.exec(`
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_vulnerability_events_lookup
   ON vulnerability_link_events (vulnerability_id, server_id, event_at);
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_vulnerability_retests_lookup
+  ON vulnerability_retests (vulnerability_id, server_id, requested_at);
 `);
 
 type CountRow = { total: number };
@@ -604,6 +623,39 @@ if ((linkCount?.total ?? 0) === 0) {
     "2026-01-13T13:40:00"
   );
   addEvent("vuln-004", "srv-15", "detected", "2026-01-13T13:40:00");
+}
+
+const retestCount = db
+  .prepare<CountRow>("SELECT COUNT(*) as total FROM vulnerability_retests")
+  .get();
+
+if ((retestCount?.total ?? 0) === 0) {
+  const insertRetest = db.prepare(
+    `INSERT INTO vulnerability_retests
+      (vulnerability_id, server_id, status, requested_at, retested_at)
+      VALUES (?, ?, ?, ?, ?)`
+  );
+  insertRetest.run(
+    "vuln-001",
+    "srv-01",
+    "requested",
+    "2026-01-15T11:00:00",
+    null
+  );
+  insertRetest.run(
+    "vuln-001",
+    "srv-03",
+    "failed",
+    "2026-01-13T09:10:00",
+    "2026-01-14T08:30:00"
+  );
+  insertRetest.run(
+    "vuln-002",
+    "srv-06",
+    "passed",
+    "2026-01-09T09:00:00",
+    "2026-01-10T16:30:00"
+  );
 }
 
 db.exec(`

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/theme-provider";
 import { ASSIGNEE_CUSTOM_FIELDS } from "@/lib/actions/assignee-fields";
@@ -49,6 +50,15 @@ type LinkEventRecord = {
   event_at: string;
 };
 
+type RetestRecord = {
+  id: number;
+  vulnerability_id: string;
+  server_id: string;
+  status: "requested" | "passed" | "failed";
+  requested_at: string;
+  retested_at: string | null;
+};
+
 export default function VulnerabilidadeAtivoPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -61,6 +71,7 @@ export default function VulnerabilidadeAtivoPage() {
   const [links, setLinks] = useState<Record<string, Record<string, LinkEntry>>>(
     {}
   );
+  const [retests, setRetests] = useState<RetestRecord[]>([]);
   const [dataError, setDataError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
@@ -247,12 +258,59 @@ export default function VulnerabilidadeAtivoPage() {
       setServers(Array.isArray(data?.servers) ? data.servers : []);
       const linkRecords = Array.isArray(data?.links) ? (data.links as LinkRecord[]) : [];
       const eventRecords = Array.isArray(data?.events) ? (data.events as LinkEventRecord[]) : [];
+      setRetests(Array.isArray(data?.retests) ? (data.retests as RetestRecord[]) : []);
       setLinks(buildLinkMap(linkRecords, eventRecords));
     } catch (err) {
       setDataError(err instanceof Error ? err.message : "Falha ao carregar vulnerabilidades.");
     } finally {
       setDataLoading(false);
     }
+  }
+
+  function requestRetest(vulnId: string, serverId: string) {
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/retest/request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao solicitar reteste.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao solicitar reteste.");
+      }
+    })();
+  }
+
+  function completeRetest(vulnId: string, serverId: string, result: "passed" | "failed") {
+    void (async () => {
+      setDataError(null);
+      try {
+        const response = await fetch("/api/vulnerabilidades/retest/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vulnerabilityId: vulnId, serverId, result }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Falha ao registrar reteste.");
+        }
+        await fetchData();
+      } catch (err) {
+        setDataError(err instanceof Error ? err.message : "Falha ao registrar reteste.");
+      }
+    })();
+  }
+
+  function getRetestHistory(vulnId: string, serverId: string) {
+    return retests
+      .filter((item) => item.vulnerability_id === vulnId && item.server_id === serverId)
+      .sort((a, b) => a.requested_at.localeCompare(b.requested_at));
   }
 
   return (
@@ -415,19 +473,86 @@ export default function VulnerabilidadeAtivoPage() {
                         ? entry.resolvedDates.map((date) => formatDate(date)).join(" · ")
                         : "-"}
                     </div>
+                    {(() => {
+                      const retestHistory = getRetestHistory(vuln.id, server.id);
+                      const latestRetest = retestHistory.at(-1);
+                      if (!latestRetest) return null;
+                      return (
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          Reteste:{" "}
+                          {latestRetest.status === "requested"
+                            ? "Solicitado"
+                            : latestRetest.status === "passed"
+                            ? "Corrigido"
+                            : "Falha"}{" "}
+                          · {formatDate(latestRetest.retested_at ?? latestRetest.requested_at)}
+                        </div>
+                      );
+                    })()}
                     <div className="mt-2">
-                      <Link
-                        href={`/vulnerabilidades/${vuln.id}`}
-                        className={cn(
-                          "inline-flex rounded-xl border px-3 py-1 text-[11px] font-semibold",
-                          isDark
-                            ? "border-white/10 text-zinc-200"
-                            : "border-slate-200 text-slate-700"
-                        )}
-                      >
-                        Ver vulnerabilidade
-                      </Link>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-[11px]"
+                          onClick={() => requestRetest(vuln.id, server.id)}
+                        >
+                          Enviar para reteste
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-[11px]"
+                          onClick={() => completeRetest(vuln.id, server.id, "passed")}
+                        >
+                          Reteste OK
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-[11px]"
+                          onClick={() => completeRetest(vuln.id, server.id, "failed")}
+                        >
+                          Reteste falhou
+                        </Button>
+                        <Link
+                          href={`/vulnerabilidades/${vuln.id}`}
+                          className={cn(
+                            "inline-flex rounded-xl border px-3 py-1 text-[11px] font-semibold",
+                            isDark
+                              ? "border-white/10 text-zinc-200"
+                              : "border-slate-200 text-slate-700"
+                          )}
+                        >
+                          Ver vulnerabilidade
+                        </Link>
+                      </div>
                     </div>
+                    {(() => {
+                      const retestHistory = getRetestHistory(vuln.id, server.id);
+                      if (retestHistory.length === 0) return null;
+                      return (
+                        <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                          {retestHistory.slice(-3).map((item) => (
+                            <div key={item.id}>
+                              Reteste{" "}
+                              {item.status === "requested"
+                                ? "solicitado"
+                                : item.status === "passed"
+                                ? "corrigido"
+                                : "falhou"}{" "}
+                              em {formatDate(item.requested_at)}
+                              {item.retested_at
+                                ? ` · Resultado em ${formatDate(item.retested_at)}`
+                                : ""}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))
               )}
