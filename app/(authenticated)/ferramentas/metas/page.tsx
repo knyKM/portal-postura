@@ -245,7 +245,91 @@ export default function MetasPage() {
       pageTitle="Cadastro de Metas"
       pageSubtitle="Defina metas, metas-alvo e acompanhe a evolução."
     >
-      <div className="grid gap-4 lg:grid-cols-[1fr,2fr]">
+      <div className="flex w-full flex-col gap-6 px-4 lg:px-10">
+        <section
+          className={cn(
+            "relative overflow-hidden rounded-4xl border px-6 py-8 shadow-[0_25px_90px_rgba(0,0,0,0.25)]",
+            isDark
+              ? "border-white/5 bg-gradient-to-br from-[#0c122b] via-[#080d1f] to-[#050816]"
+              : "border-slate-200 bg-gradient-to-br from-white to-slate-100"
+          )}
+        >
+          <div className="absolute inset-0 flex justify-end opacity-60">
+            <div className="h-64 w-64 rounded-full bg-purple-500/10 blur-3xl" />
+          </div>
+          <div className="relative flex flex-col gap-8">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-2xl">
+                  <Target className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-purple-300">
+                    Central de metas
+                  </p>
+                  <h2 className={cn("text-3xl font-semibold", isDark ? "text-white" : "text-slate-900")}>
+                    Acompanhe evolução e metas-alvo
+                  </h2>
+                  <p className="text-sm text-zinc-400">
+                    Estruture objetivos e registre avanços com métricas claras.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  {
+                    label: "Metas ativas",
+                    value: summary.total,
+                    tone: isDark
+                      ? "from-purple-500/20 to-indigo-500/10 text-purple-200"
+                      : "from-purple-50 to-indigo-50 text-purple-700",
+                  },
+                  {
+                    label: "Média de evolução",
+                    value: `${summary.avg.toFixed(0)}%`,
+                    tone: isDark
+                      ? "from-emerald-500/20 to-teal-500/10 text-emerald-200"
+                      : "from-emerald-50 to-teal-50 text-emerald-700",
+                  },
+                  {
+                    label: "Concluídas",
+                    value: summary.completed,
+                    tone: isDark
+                      ? "from-amber-500/20 to-rose-500/10 text-amber-200"
+                      : "from-amber-50 to-rose-50 text-amber-700",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className={cn(
+                      "flex items-center gap-3 rounded-3xl border px-4 py-4",
+                      isDark
+                        ? "border-white/5 bg-white/5 text-white"
+                        : "border-slate-200 bg-white text-slate-900"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg",
+                        item.tone
+                      )}
+                    >
+                      <Target className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                        {item.label}
+                      </p>
+                      <p className="text-xl font-semibold">{item.value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-4 lg:grid-cols-[1fr,2fr]">
         <Card
           className={cn(
             "rounded-3xl border p-5",
@@ -418,49 +502,6 @@ export default function MetasPage() {
                       : "border-slate-200 bg-white"
                   )}
                 />
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div
-                  className={cn(
-                    "rounded-2xl border px-4 py-3 text-sm",
-                    isDark
-                      ? "border-white/10 bg-black/30 text-zinc-100"
-                      : "border-slate-200 bg-slate-50 text-slate-700"
-                  )}
-                >
-                  <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                    Metas ativas
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold">{summary.total}</p>
-                </div>
-                <div
-                  className={cn(
-                    "rounded-2xl border px-4 py-3 text-sm",
-                    isDark
-                      ? "border-white/10 bg-black/30 text-zinc-100"
-                      : "border-slate-200 bg-slate-50 text-slate-700"
-                  )}
-                >
-                  <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                    Média de evolução
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold">
-                    {summary.avg.toFixed(0)}%
-                  </p>
-                </div>
-                <div
-                  className={cn(
-                    "rounded-2xl border px-4 py-3 text-sm",
-                    isDark
-                      ? "border-white/10 bg-black/30 text-zinc-100"
-                      : "border-slate-200 bg-slate-50 text-slate-700"
-                  )}
-                >
-                  <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                    Metas concluídas
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold">{summary.completed}</p>
-                </div>
               </div>
             </CardContent>
           </Card>
