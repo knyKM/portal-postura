@@ -490,6 +490,41 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    front TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    description TEXT,
+    target_type TEXT NOT NULL DEFAULT 'percent',
+    target_value REAL NOT NULL DEFAULT 100,
+    target_unit TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS goal_updates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id INTEGER NOT NULL,
+    progress_type TEXT NOT NULL DEFAULT 'percent',
+    progress_value REAL NOT NULL DEFAULT 0,
+    progress_unit TEXT,
+    progress_percent REAL,
+    note TEXT,
+    progress_date TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_goal_updates_goal
+  ON goal_updates (goal_id, progress_date);
+`);
+
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_vulnerability_retests_lookup
   ON vulnerability_retests (vulnerability_id, server_id, requested_at);
 `);

@@ -5,7 +5,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/theme-provider";
-import { Activity, KanbanSquare, Network, Terminal } from "lucide-react";
+import { Activity, KanbanSquare, Network, Target, Terminal } from "lucide-react";
 
 const tools = [
   {
@@ -42,6 +42,13 @@ const tools = [
     description: "Cadastre e monitore sensores de rede em tempo real.",
     href: "/ferramentas/sensores",
     icon: Network,
+  },
+  {
+    id: "metas",
+    title: "Cadastro de Metas",
+    description: "Acompanhe metas do time com metas-alvo e evolução.",
+    href: "/ferramentas/metas",
+    icon: Target,
   },
 ];
 
