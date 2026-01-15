@@ -250,7 +250,9 @@ const defaultAllowedRoutes = JSON.stringify([
   "/playbooks",
   "/ferramentas",
   "/auditoria",
+  "/sugestoes-problemas",
   "/sugestoes",
+  "/sugestoes/jira",
   "/fila-aprovacoes",
   "/usuarios",
 ]);
@@ -260,6 +262,36 @@ db.exec(
    SET allowed_routes = '${defaultAllowedRoutes}'
    WHERE allowed_routes IS NULL OR allowed_routes = ''`
 );
+
+type SecurityLevelRouteRow = {
+  key: string;
+  allowed_routes: string | null;
+};
+
+const routeRows = db
+  .prepare<SecurityLevelRouteRow>(
+    "SELECT key, allowed_routes FROM security_levels"
+  )
+  .all();
+
+const requiredRoutes = ["/sugestoes-problemas", "/sugestoes", "/sugestoes/jira"];
+const updateAllowedRoutes = db.prepare(
+  "UPDATE security_levels SET allowed_routes = ? WHERE key = ?"
+);
+
+routeRows.forEach((row) => {
+  let parsed: string[] = [];
+  if (row.allowed_routes) {
+    try {
+      const data = JSON.parse(row.allowed_routes);
+      parsed = Array.isArray(data) ? data : [];
+    } catch {
+      parsed = [];
+    }
+  }
+  const next = Array.from(new Set([...parsed, ...requiredRoutes]));
+  updateAllowedRoutes.run(JSON.stringify(next), row.key);
+});
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS network_sensors (
@@ -435,6 +467,26 @@ db.exec(`
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_vulnerability_events_lookup
   ON vulnerability_link_events (vulnerability_id, server_id, event_at);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS jira_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'aberto',
+    requester_id INTEGER,
+    requester_name TEXT,
+    requester_email TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_jira_suggestions_status
+  ON jira_suggestions (status, created_at);
 `);
 
 db.exec(`
@@ -623,6 +675,58 @@ if ((linkCount?.total ?? 0) === 0) {
     "2026-01-13T13:40:00"
   );
   addEvent("vuln-004", "srv-15", "detected", "2026-01-13T13:40:00");
+}
+
+const jiraSuggestionCount = db
+  .prepare<CountRow>("SELECT COUNT(*) as total FROM jira_suggestions")
+  .get();
+
+if ((jiraSuggestionCount?.total ?? 0) === 0) {
+  const insertSuggestion = db.prepare(
+    `INSERT INTO jira_suggestions
+      (type, title, description, status, requester_name, requester_email, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  insertSuggestion.run(
+    "problema",
+    "Erro ao sincronizar campos customizados",
+    "Os campos customizados não aparecem na criação de issues quando o projeto é ASSETN.",
+    "aberto",
+    "Kaua Morateli",
+    "kaua.melo@telefonica.com",
+    "2026-01-15T09:00:00",
+    "2026-01-15T09:00:00"
+  );
+  insertSuggestion.run(
+    "sugestao",
+    "Sugestão de automação para transição em lote",
+    "Gostaria de um fluxo para transicionar issues de alto risco para Done automaticamente.",
+    "em_analise",
+    "Andre Massarente",
+    "andre.massarente@telefonica.com",
+    "2026-01-14T15:12:00",
+    "2026-01-14T15:12:00"
+  );
+  insertSuggestion.run(
+    "problema",
+    "Timeout em consulta JQL",
+    "Quando a JQL retorna mais de 5k issues, ocorre timeout na API.",
+    "em_execucao",
+    "Leticia Campos",
+    "leticia.campos@telefonica.com",
+    "2026-01-13T10:25:00",
+    "2026-01-14T18:45:00"
+  );
+  insertSuggestion.run(
+    "sugestao",
+    "Adicionar atalho para histórico de mudanças",
+    "Seria útil um botão direto para auditoria da fila de aprovação.",
+    "concluido",
+    "Carlos Silva",
+    "carlos.silva@telefonica.com",
+    "2026-01-10T14:05:00",
+    "2026-01-12T17:20:00"
+  );
 }
 
 const retestCount = db

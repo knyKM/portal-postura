@@ -58,9 +58,9 @@ const navItems: NavItem[] = [
   { label: "Ferramentas", icon: Terminal, href: "/ferramentas" },
   { label: "Auditoria", icon: Activity, href: "/auditoria" },
   {
-    label: "Sugestões",
+    label: "Sugestões/Problemas",
     icon: Sparkles,
-    href: "/sugestoes",
+    href: "/sugestoes-problemas",
     requiresAdmin: true,
   },
   {

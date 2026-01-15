@@ -62,7 +62,9 @@ const securityRouteOptions = [
   { label: "Playbooks", value: "/playbooks" },
   { label: "Ferramentas", value: "/ferramentas" },
   { label: "Auditoria", value: "/auditoria" },
-  { label: "Sugestões", value: "/sugestoes" },
+  { label: "Sugestões/Problemas", value: "/sugestoes-problemas" },
+  { label: "Sugestões Postura SM", value: "/sugestoes" },
+  { label: "Sugestões Jira", value: "/sugestoes/jira" },
   { label: "Fila de Aprovações", value: "/fila-aprovacoes" },
   { label: "Usuários", value: "/usuarios" },
 ];
