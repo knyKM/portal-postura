@@ -26,6 +26,7 @@ type LinkEntry = {
   status: "active" | "resolved";
   occurrences: number;
   resolvedCount: number;
+  firstDetectedAt: string;
   lastChangedAt: string;
   occurrenceDates: string[];
   resolvedDates: string[];
@@ -97,6 +98,33 @@ export default function VulnerabilidadeAtivoPage() {
   );
 
   const ownerMap = server ? demoServerOwners[server.id] ?? {} : {};
+  const ownerGroups = useMemo(
+    () => [
+      {
+        title: "Área Proprietária",
+        ids: ["customfield_11702", "customfield_11703", "customfield_11704"],
+      },
+      {
+        title: "Área Solucionadora",
+        ids: ["customfield_11705", "customfield_11706", "customfield_11707", "customfield_10663"],
+      },
+      {
+        title: "Owners e Negócio",
+        ids: [
+          "customfield_10647",
+          "customfield_13200",
+          "customfield_13201",
+          "customfield_13202",
+          "customfield_13203",
+          "customfield_13205",
+          "customfield_13204",
+          "customfield_12301",
+          "customfield_12302",
+        ],
+      },
+    ],
+    []
+  );
 
   const relatedVulns = useMemo(() => {
     if (!server) return [];
@@ -192,6 +220,7 @@ export default function VulnerabilidadeAtivoPage() {
           status: record.status,
           occurrences: record.occurrences,
           resolvedCount: record.resolved_count,
+          firstDetectedAt: record.first_detected_at ?? "",
           lastChangedAt: record.last_changed_at ?? record.first_detected_at ?? "",
           occurrenceDates: events.occurrenceDates,
           resolvedDates: events.resolvedDates,
@@ -286,21 +315,43 @@ export default function VulnerabilidadeAtivoPage() {
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
               Responsáveis
             </p>
-            <div className="mt-3 space-y-2 text-xs">
-              {ASSIGNEE_CUSTOM_FIELDS.map((field) => (
-                <div
-                  key={`${server.id}-${field.id}`}
-                  className={cn(
-                    "rounded-xl border px-3 py-2",
-                    isDark
-                      ? "border-white/10 bg-black/20 text-zinc-200"
-                      : "border-slate-200 bg-white text-slate-700"
-                  )}
-                >
-                  <p className="text-[11px] text-zinc-500">{field.label}</p>
-                  <p className="mt-1 font-semibold">{ownerMap[field.id] ?? "-"}</p>
-                </div>
-              ))}
+            <div className="mt-3 space-y-4 text-xs">
+              {ownerGroups.map((group) => {
+                const fields = ASSIGNEE_CUSTOM_FIELDS.filter((field) =>
+                  group.ids.includes(field.id)
+                );
+                return (
+                  <div
+                    key={group.title}
+                    className={cn(
+                      "rounded-2xl border px-3 py-3",
+                      isDark
+                        ? "border-white/10 bg-black/20 text-zinc-200"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                      {group.title}
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {fields.map((field) => (
+                        <div
+                          key={`${server.id}-${field.id}`}
+                          className={cn(
+                            "rounded-xl border px-3 py-2",
+                            isDark
+                              ? "border-white/10 bg-white/5 text-zinc-200"
+                              : "border-slate-200 bg-slate-50 text-slate-700"
+                          )}
+                        >
+                          <p className="text-[11px] text-zinc-500">{field.label}</p>
+                          <p className="mt-1 font-semibold">{ownerMap[field.id] ?? "-"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -350,6 +401,9 @@ export default function VulnerabilidadeAtivoPage() {
                       </span>
                     </div>
                     <div className="mt-2 text-[11px] text-zinc-500">
+                      Primeira detecção: {formatDate(entry.firstDetectedAt)}
+                    </div>
+                    <div className="mt-1 text-[11px] text-zinc-500">
                       Ocorrências:{" "}
                       {entry.occurrenceDates.length
                         ? entry.occurrenceDates.map((date) => formatDate(date)).join(" · ")
