@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type JiraSuggestionRecord = {
   id: number;
@@ -34,7 +35,7 @@ export function listJiraSuggestions() {
 }
 
 export function createJiraSuggestion(input: JiraSuggestionInput) {
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   const record = db
     .prepare<JiraSuggestionRecord>(
       `INSERT INTO jira_suggestions
@@ -60,7 +61,7 @@ export function updateJiraSuggestionStatus(
   id: number,
   status: JiraSuggestionRecord["status"]
 ) {
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   const record = db
     .prepare<JiraSuggestionRecord>(
       `UPDATE jira_suggestions

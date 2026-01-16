@@ -5,7 +5,14 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/theme-provider";
-import { Activity, KanbanSquare, Network, Target, Terminal } from "lucide-react";
+import {
+  Activity,
+  FileText,
+  KanbanSquare,
+  Network,
+  Target,
+  Terminal,
+} from "lucide-react";
 
 const tools = [
   {
@@ -49,6 +56,13 @@ const tools = [
     description: "Acompanhe metas do time com metas-alvo e evolução.",
     href: "/ferramentas/metas",
     icon: Target,
+  },
+  {
+    id: "gestao-contratos",
+    title: "Gestão de Contratos",
+    description: "Centralize contratos e acompanhamento operacional.",
+    href: "/ferramentas/gestao-contratos",
+    icon: FileText,
   },
 ];
 

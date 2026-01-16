@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type PlaybookCondition = {
   label: string;
@@ -96,6 +97,7 @@ const DEFAULT_STEPS: PlaybookStep[] = [
 ];
 
 export function createPlaybook(data: CreatePlaybookInput): Playbook {
+  const now = getLocalTimestamp();
   const normalizedSteps =
     Array.isArray(data.steps) && data.steps.length > 0
       ? data.steps.map((step) => ({
@@ -106,8 +108,8 @@ export function createPlaybook(data: CreatePlaybookInput): Playbook {
 
   const stmt = db.prepare(
     `INSERT INTO playbooks
-      (name, description, squads, automations, status, last_run, steps, script_path)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      (name, description, squads, automations, status, last_run, steps, script_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const info = stmt.run(
     data.name,
@@ -117,7 +119,9 @@ export function createPlaybook(data: CreatePlaybookInput): Playbook {
     data.status ?? "em validação",
     data.lastRun ?? null,
     JSON.stringify(normalizedSteps),
-    data.scriptPath ?? null
+    data.scriptPath ?? null,
+    now,
+    now
   );
 
   const fetch = db.prepare<PlaybookRecord>("SELECT * FROM playbooks WHERE id = ?");
@@ -155,7 +159,7 @@ export function updatePlaybook(id: number, input: UpdatePlaybookInput): Playbook
 
   const stmt = db.prepare(
     `UPDATE playbooks
-     SET name = ?, description = ?, squads = ?, automations = ?, status = ?, last_run = ?, steps = ?, script_path = ?, updated_at = CURRENT_TIMESTAMP
+     SET name = ?, description = ?, squads = ?, automations = ?, status = ?, last_run = ?, steps = ?, script_path = ?, updated_at = datetime('now','localtime')
      WHERE id = ?`
   );
 

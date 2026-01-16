@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type SensorStatus = "up" | "down" | "unknown";
 
@@ -58,15 +59,19 @@ type CreateSensorInput = {
 };
 
 export function createSensor(input: CreateSensorInput): Sensor {
+  const now = getLocalTimestamp();
   const stmt = db.prepare(
-    `INSERT INTO network_sensors (hostname, ip, environment, owner_tool, status)
-     VALUES (?, ?, ?, ?, 'unknown')`
+    `INSERT INTO network_sensors
+      (hostname, ip, environment, owner_tool, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'unknown', ?, ?)`
   );
   const info = stmt.run(
     input.hostname.trim(),
     input.ip.trim(),
     input.environment?.trim() || null,
-    input.ownerTool?.trim() || null
+    input.ownerTool?.trim() || null,
+    now,
+    now
   );
   const record = db
     .prepare<SensorRecord>("SELECT * FROM network_sensors WHERE id = ?")
@@ -79,8 +84,9 @@ export function createSensor(input: CreateSensorInput): Sensor {
 
 export function createSensorsBulk(inputs: CreateSensorInput[]): Sensor[] {
   const insert = db.prepare(
-    `INSERT INTO network_sensors (hostname, ip, environment, owner_tool, status)
-     VALUES (?, ?, ?, ?, 'unknown')`
+    `INSERT INTO network_sensors
+      (hostname, ip, environment, owner_tool, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'unknown', ?, ?)`
   );
   const fetch = db.prepare<SensorRecord>(
     "SELECT * FROM network_sensors WHERE id = ?"
@@ -88,11 +94,14 @@ export function createSensorsBulk(inputs: CreateSensorInput[]): Sensor[] {
   const sensors: Sensor[] = [];
   const transaction = db.transaction((rows: CreateSensorInput[]) => {
     rows.forEach((row) => {
+      const now = getLocalTimestamp();
       const info = insert.run(
         row.hostname.trim(),
         row.ip.trim(),
         row.environment?.trim() || null,
-        row.ownerTool?.trim() || null
+        row.ownerTool?.trim() || null,
+        now,
+        now
       );
       const record = fetch.get(Number(info.lastInsertRowid));
       if (record) {
@@ -112,7 +121,7 @@ export function updateSensorStatus(
 ): Sensor | null {
   const stmt = db.prepare(
     `UPDATE network_sensors
-     SET status = ?, last_detail = ?, last_checked_at = ?, updated_at = CURRENT_TIMESTAMP
+     SET status = ?, last_detail = ?, last_checked_at = ?, updated_at = datetime('now','localtime')
      WHERE id = ?`
   );
   const result = stmt.run(status, detail, checkedAt, id);
@@ -126,7 +135,9 @@ export function updateSensorStatus(
 }
 
 export function listStaleSensors(thresholdMinutes: number): Sensor[] {
-  const cutoff = new Date(Date.now() - thresholdMinutes * 60_000).toISOString();
+  const cutoff = getLocalTimestamp(
+    new Date(Date.now() - thresholdMinutes * 60_000)
+  );
   const stmt = db.prepare<SensorRecord>(
     `SELECT * FROM network_sensors
      WHERE last_checked_at IS NULL OR last_checked_at < ?

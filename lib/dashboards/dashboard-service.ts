@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type DashboardTemplateRecord = {
   id: number;
@@ -49,11 +50,12 @@ type CreateDashboardTemplateInput = {
 export function createDashboardTemplate(
   data: CreateDashboardTemplateInput
 ): DashboardTemplate {
+  const now = getLocalTimestamp();
   const stmt = db.prepare(
-    `INSERT INTO dashboard_templates (name, config)
-     VALUES (?, ?)`
+    `INSERT INTO dashboard_templates (name, config, created_at, updated_at)
+     VALUES (?, ?, ?, ?)`
   );
-  const info = stmt.run(data.name, JSON.stringify(data.config ?? {}));
+  const info = stmt.run(data.name, JSON.stringify(data.config ?? {}), now, now);
   const fetch = db.prepare<DashboardTemplateRecord>(
     "SELECT * FROM dashboard_templates WHERE id = ?"
   );
@@ -81,7 +83,7 @@ export function updateDashboardTemplate(
   }
   const stmt = db.prepare(
     `UPDATE dashboard_templates
-     SET name = ?, config = ?, updated_at = CURRENT_TIMESTAMP
+     SET name = ?, config = ?, updated_at = datetime('now','localtime')
      WHERE id = ?`
   );
   const nextName = input.name ?? existing.name;
@@ -96,4 +98,10 @@ export function updateDashboardTemplate(
     throw new Error("Falha ao atualizar template");
   }
   return mapRecord(record);
+}
+
+export function deleteDashboardTemplate(id: number): boolean {
+  const stmt = db.prepare("DELETE FROM dashboard_templates WHERE id = ?");
+  const result = stmt.run(id);
+  return result.changes > 0;
 }

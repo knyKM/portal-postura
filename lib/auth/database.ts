@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbFile = path.join(dataDir, "auth.db");
@@ -26,7 +27,10 @@ db.exec(`
     mfa_secret TEXT,
     mfa_enabled INTEGER DEFAULT 0,
     last_seen_at TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    jira_url TEXT,
+    jira_token TEXT,
+    jira_verify_ssl TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -53,6 +57,11 @@ const hasMfaEnabledColumn = tableInfo.some(
 );
 const hasLastSeenColumn = tableInfo.some(
   (column) => column.name === "last_seen_at"
+);
+const hasJiraUrlColumn = tableInfo.some((column) => column.name === "jira_url");
+const hasJiraTokenColumn = tableInfo.some((column) => column.name === "jira_token");
+const hasJiraVerifyColumn = tableInfo.some(
+  (column) => column.name === "jira_verify_ssl"
 );
 
 if (!hasRoleColumn) {
@@ -83,6 +92,15 @@ if (!hasMfaEnabledColumn) {
 if (!hasLastSeenColumn) {
   db.exec("ALTER TABLE users ADD COLUMN last_seen_at TEXT");
 }
+if (!hasJiraUrlColumn) {
+  db.exec("ALTER TABLE users ADD COLUMN jira_url TEXT");
+}
+if (!hasJiraTokenColumn) {
+  db.exec("ALTER TABLE users ADD COLUMN jira_token TEXT");
+}
+if (!hasJiraVerifyColumn) {
+  db.exec("ALTER TABLE users ADD COLUMN jira_verify_ssl TEXT");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS action_requests (
@@ -96,7 +114,7 @@ db.exec(`
     requester_email TEXT,
     requester_name TEXT,
     status TEXT DEFAULT 'pending',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     approved_at TEXT,
     approved_by TEXT,
     audit_notes TEXT
@@ -113,7 +131,7 @@ db.exec(`
     message TEXT NOT NULL,
     payload TEXT,
     is_read INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     read_at TEXT
   );
 `);
@@ -138,7 +156,7 @@ db.exec(`
     error_message TEXT,
     total_issues INTEGER,
     processed_issues INTEGER,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     started_at TEXT,
     finished_at TEXT,
     FOREIGN KEY(request_id) REFERENCES action_requests(id)
@@ -152,7 +170,7 @@ db.exec(`
     type TEXT NOT NULL,
     message TEXT,
     actor_name TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY(request_id) REFERENCES action_requests(id)
   );
 `);
@@ -165,7 +183,7 @@ db.exec(`
     sender_name TEXT,
     sender_role TEXT,
     message TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY(request_id) REFERENCES action_requests(id)
   );
 `);
@@ -229,7 +247,7 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT,
     allowed_routes TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -249,6 +267,7 @@ const defaultAllowedRoutes = JSON.stringify([
   "/acoes",
   "/playbooks",
   "/ferramentas",
+  "/gestao-contratos",
   "/auditoria",
   "/sugestoes-problemas",
   "/sugestoes",
@@ -274,7 +293,12 @@ const routeRows = db
   )
   .all();
 
-const requiredRoutes = ["/sugestoes-problemas", "/sugestoes", "/sugestoes/jira"];
+const requiredRoutes = [
+  "/sugestoes-problemas",
+  "/sugestoes",
+  "/sugestoes/jira",
+  "/gestao-contratos",
+];
 const updateAllowedRoutes = db.prepare(
   "UPDATE security_levels SET allowed_routes = ? WHERE key = ?"
 );
@@ -303,8 +327,8 @@ db.exec(`
     status TEXT DEFAULT 'unknown',
     last_detail TEXT,
     last_checked_at TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -375,8 +399,8 @@ db.exec(`
     duration_seconds INTEGER DEFAULT 0,
     last_run TEXT,
     status_code INTEGER DEFAULT 3,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -386,7 +410,7 @@ db.exec(`
     job_id TEXT NOT NULL,
     message TEXT NOT NULL,
     level TEXT DEFAULT 'info',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (job_id) REFERENCES automation_jobs(id) ON DELETE CASCADE
   );
 `);
@@ -401,7 +425,7 @@ db.exec(`
     remediation TEXT,
     affected TEXT,
     score REAL DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -411,7 +435,7 @@ db.exec(`
     name TEXT NOT NULL,
     ip TEXT NOT NULL,
     environment TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -425,7 +449,7 @@ db.exec(`
     resolved_count INTEGER DEFAULT 0,
     first_detected_at TEXT,
     last_changed_at TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     UNIQUE(vulnerability_id, server_id),
     FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id),
     FOREIGN KEY (server_id) REFERENCES vulnerability_servers(id)
@@ -439,7 +463,7 @@ db.exec(`
     server_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
     event_at TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id),
     FOREIGN KEY (server_id) REFERENCES vulnerability_servers(id)
   );
@@ -453,7 +477,7 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'requested',
     requested_at TEXT NOT NULL,
     retested_at TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id),
     FOREIGN KEY (server_id) REFERENCES vulnerability_servers(id)
   );
@@ -479,8 +503,8 @@ db.exec(`
     requester_id INTEGER,
     requester_name TEXT,
     requester_email TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -497,11 +521,13 @@ db.exec(`
     owner TEXT NOT NULL,
     description TEXT,
     due_date TEXT,
+    start_month TEXT,
+    end_month TEXT,
     target_type TEXT NOT NULL DEFAULT 'percent',
     target_value REAL NOT NULL DEFAULT 100,
     target_unit TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -510,9 +536,19 @@ const goalsTableInfo = db
   .all() as TableInfoRow[];
 
 const hasGoalsDueDate = goalsTableInfo.some((column) => column.name === "due_date");
+const hasGoalsStartMonth = goalsTableInfo.some(
+  (column) => column.name === "start_month"
+);
+const hasGoalsEndMonth = goalsTableInfo.some((column) => column.name === "end_month");
 
 if (!hasGoalsDueDate) {
   db.exec("ALTER TABLE goals ADD COLUMN due_date TEXT");
+}
+if (!hasGoalsStartMonth) {
+  db.exec("ALTER TABLE goals ADD COLUMN start_month TEXT");
+}
+if (!hasGoalsEndMonth) {
+  db.exec("ALTER TABLE goals ADD COLUMN end_month TEXT");
 }
 
 db.exec(`
@@ -525,7 +561,7 @@ db.exec(`
     progress_percent REAL,
     note TEXT,
     progress_date TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
   );
 `);
@@ -817,7 +853,7 @@ db.exec(`
     content TEXT NOT NULL,
     status TEXT DEFAULT 'pending',
     implementation_stage TEXT DEFAULT 'Descoberta',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -859,8 +895,8 @@ db.exec(`
     last_run TEXT,
     steps TEXT NOT NULL,
     script_path TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -871,8 +907,8 @@ db.exec(`
     nodes TEXT NOT NULL,
     links TEXT NOT NULL,
     custom_types TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -894,8 +930,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     config TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -1096,7 +1132,8 @@ const automationJobCount = db
 
 if ((automationJobCount?.total ?? 0) === 0) {
   const now = Date.now();
-  const offsetMinutes = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
+  const offsetMinutes = (minutes: number) =>
+    getLocalTimestamp(new Date(now - minutes * 60_000));
   const insertJob = db.prepare(
     `INSERT INTO automation_jobs
       (id, name, description, owner, queue_seconds, pending_issues, duration_seconds, last_run, status_code, created_at, updated_at)

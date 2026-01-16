@@ -9,6 +9,7 @@ import {
   listStaleSensors,
   updateSensorStatus,
 } from "@/lib/sensors/sensor-service";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 const execAsync = promisify(exec);
 const STALE_MINUTES = 20;
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     ? listSensors().filter((sensor) => ids.includes(sensor.id))
     : listStaleSensors(STALE_MINUTES);
 
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   const updated = await Promise.all(
     targets.map(async (sensor) => {
       const result = await pingHost(sensor.ip);

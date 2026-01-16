@@ -33,7 +33,6 @@ export default function ConfiguracoesPage() {
   const [jiraToken, setJiraToken] = useState("");
   const [jiraUrl, setJiraUrl] = useState("");
   const [jiraVerifySsl, setJiraVerifySsl] = useState(true);
-  const [jiraMaxResults, setJiraMaxResults] = useState(200);
   const [loadingJiraToken, setLoadingJiraToken] = useState(true);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
@@ -69,7 +68,7 @@ export default function ConfiguracoesPage() {
   }, []);
 
   useEffect(() => {
-    if (!user?.role || user.role !== "admin") {
+    if (!user) {
       setLoadingJiraToken(false);
       return;
     }
@@ -83,12 +82,6 @@ export default function ConfiguracoesPage() {
         setJiraToken(data?.token ?? "");
         setJiraUrl(data?.url ?? "");
         setJiraVerifySsl(data?.verifySsl ?? true);
-        const parsedMaxResults = Number(data?.maxResults ?? 200);
-        setJiraMaxResults(
-          Number.isFinite(parsedMaxResults) && parsedMaxResults > 0
-            ? parsedMaxResults
-            : 200
-        );
       })
       .catch((err) => {
         setJiraError(
@@ -307,16 +300,15 @@ export default function ConfiguracoesPage() {
           </Card>
         </div>
 
-        {/* ADMIN: INTEGRAÇÃO JIRA */}
-        {user?.role === "admin" && (
-          <Card
-            className={cn(
-              "rounded-3xl border overflow-hidden",
-              isDark
-                ? "border-zinc-800 bg-[#050816]/80"
-                : "border-slate-200 bg-white"
-            )}
-          >
+        {/* INTEGRAÇÃO JIRA */}
+        <Card
+          className={cn(
+            "rounded-3xl border overflow-hidden",
+            isDark
+              ? "border-zinc-800 bg-[#050816]/80"
+              : "border-slate-200 bg-white"
+          )}
+        >
             <CardHeader className="pb-3 border-b border-zinc-800/40">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -393,87 +385,107 @@ export default function ConfiguracoesPage() {
                   O token será usado para autenticar chamadas às APIs do Jira nas automações.
                 </p>
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-400">
-                  Limite máximo de issues por ação
-                </label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={jiraMaxResults}
-                  disabled={loadingJiraToken}
-                  onChange={(event) =>
-                    setJiraMaxResults(
-                      Math.max(1, Math.floor(Number(event.target.value || 1)))
-                    )
-                  }
-                  placeholder="Ex: 200"
-                />
-                <p className="text-[11px] text-zinc-500">
-                  Controla quantas issues podem ser processadas em uma aprovação de
-                  alteração de status.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-400">
-                  Execuções em fila
-                </label>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-[11px] text-zinc-500">
-                    <input
-                      type="checkbox"
-                      checked={jobsPaused}
-                      disabled={jobsLoading}
-                      onChange={async (event) => {
-                        const nextPaused = event.target.checked;
-                        setJobsLoading(true);
-                        setJobsError(null);
-                        setJobsMessage(null);
-                        try {
-                          const response = await fetch("/api/actions/jobs", {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ paused: nextPaused }),
-                          });
-                          const data = await response.json().catch(() => null);
-                          if (!response.ok) {
-                            throw new Error(data?.error || "");
-                          }
-                          setJobsPaused(Boolean(data?.paused ?? nextPaused));
-                          setJobsMessage(
-                            nextPaused
-                              ? "Fila pausada. Novas aprovações ficarão aguardando."
-                              : "Fila liberada. As execuções serão retomadas."
-                          );
-                        } catch (err) {
-                          setJobsError(err instanceof Error ? err.message : "");
-                        } finally {
-                          setJobsLoading(false);
-                        }
-                      }}
-                    />
-                    Pausar execuções da fila
+              {user?.role === "admin" && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-zinc-400">
+                    Execuções em fila
                   </label>
-                  <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                    <span>Máximo em paralelo</span>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={jobsMaxParallel}
-                      disabled={jobsLoading}
-                      onChange={(event) =>
-                        setJobsMaxParallel(
-                          Math.max(1, Math.floor(Number(event.target.value || 1)))
-                        )
-                      }
-                      className="h-8 w-20"
-                    />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-[11px] text-zinc-500">
+                      <input
+                        type="checkbox"
+                        checked={jobsPaused}
+                        disabled={jobsLoading}
+                        onChange={async (event) => {
+                          const nextPaused = event.target.checked;
+                          setJobsLoading(true);
+                          setJobsError(null);
+                          setJobsMessage(null);
+                          try {
+                            const response = await fetch("/api/actions/jobs", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ paused: nextPaused }),
+                            });
+                            const data = await response.json().catch(() => null);
+                            if (!response.ok) {
+                              throw new Error(data?.error || "");
+                            }
+                            setJobsPaused(Boolean(data?.paused ?? nextPaused));
+                            setJobsMessage(
+                              nextPaused
+                                ? "Fila pausada. Novas aprovações ficarão aguardando."
+                                : "Fila liberada. As execuções serão retomadas."
+                            );
+                          } catch (err) {
+                            setJobsError(err instanceof Error ? err.message : "");
+                          } finally {
+                            setJobsLoading(false);
+                          }
+                        }}
+                      />
+                      Pausar execuções da fila
+                    </label>
+                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                      <span>Máximo em paralelo</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={jobsMaxParallel}
+                        disabled={jobsLoading}
+                        onChange={(event) =>
+                          setJobsMaxParallel(
+                            Math.max(1, Math.floor(Number(event.target.value || 1)))
+                          )
+                        }
+                        className="h-8 w-20"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={jobsLoading}
+                        className={cn(
+                          "rounded-xl text-[11px]",
+                          isDark
+                            ? "border-white/10 text-zinc-200 hover:border-white/30"
+                            : "border-slate-200 text-slate-700 hover:border-slate-300"
+                        )}
+                        onClick={async () => {
+                          setJobsLoading(true);
+                          setJobsError(null);
+                          setJobsMessage(null);
+                          try {
+                            const response = await fetch("/api/actions/jobs", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ maxParallel: jobsMaxParallel }),
+                            });
+                            const data = await response.json().catch(() => null);
+                            if (!response.ok) {
+                              throw new Error(data?.error || "");
+                            }
+                            setJobsMaxParallel(
+                              typeof data?.maxParallel === "number"
+                                ? data.maxParallel
+                                : jobsMaxParallel
+                            );
+                            setJobsMessage("Limite de execuções atualizado.");
+                          } catch (err) {
+                            setJobsError(err instanceof Error ? err.message : "");
+                          } finally {
+                            setJobsLoading(false);
+                          }
+                        }}
+                      >
+                        Salvar
+                      </Button>
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
                       disabled={jobsLoading}
                       className={cn(
-                        "rounded-xl text-[11px]",
+                        "rounded-xl text-xs",
                         isDark
                           ? "border-white/10 text-zinc-200 hover:border-white/30"
                           : "border-slate-200 text-slate-700 hover:border-slate-300"
@@ -486,18 +498,14 @@ export default function ConfiguracoesPage() {
                           const response = await fetch("/api/actions/jobs", {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ maxParallel: jobsMaxParallel }),
+                            body: JSON.stringify({ resume: true }),
                           });
                           const data = await response.json().catch(() => null);
                           if (!response.ok) {
                             throw new Error(data?.error || "");
                           }
-                          setJobsMaxParallel(
-                            typeof data?.maxParallel === "number"
-                              ? data.maxParallel
-                              : jobsMaxParallel
-                          );
-                          setJobsMessage("Limite de execuções atualizado.");
+                          setJobsPaused(false);
+                          setJobsMessage("Execuções retomadas.");
                         } catch (err) {
                           setJobsError(err instanceof Error ? err.message : "");
                         } finally {
@@ -505,52 +513,17 @@ export default function ConfiguracoesPage() {
                         }
                       }}
                     >
-                      Salvar
+                      Iniciar execuções pendentes
                     </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={jobsLoading}
-                    className={cn(
-                      "rounded-xl text-xs",
-                      isDark
-                        ? "border-white/10 text-zinc-200 hover:border-white/30"
-                        : "border-slate-200 text-slate-700 hover:border-slate-300"
-                    )}
-                    onClick={async () => {
-                      setJobsLoading(true);
-                      setJobsError(null);
-                      setJobsMessage(null);
-                      try {
-                        const response = await fetch("/api/actions/jobs", {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ resume: true }),
-                        });
-                        const data = await response.json().catch(() => null);
-                        if (!response.ok) {
-                          throw new Error(data?.error || "");
-                        }
-                        setJobsPaused(false);
-                        setJobsMessage("Execuções retomadas.");
-                      } catch (err) {
-                        setJobsError(err instanceof Error ? err.message : "");
-                      } finally {
-                        setJobsLoading(false);
-                      }
-                    }}
-                  >
-                    Iniciar execuções pendentes
-                  </Button>
+                  {jobsError && (
+                    <p className="text-[11px] text-rose-400">{jobsError}</p>
+                  )}
+                  {jobsMessage && (
+                    <p className="text-[11px] text-emerald-400">{jobsMessage}</p>
+                  )}
                 </div>
-                {jobsError && (
-                  <p className="text-[11px] text-rose-400">{jobsError}</p>
-                )}
-                {jobsMessage && (
-                  <p className="text-[11px] text-emerald-400">{jobsMessage}</p>
-                )}
-              </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
@@ -596,11 +569,6 @@ export default function ConfiguracoesPage() {
                       }
                       setJiraMessage("Token salvo com sucesso.");
                       setJiraVerifySsl(data?.verifySsl ?? jiraVerifySsl);
-                      setJiraMaxResults(
-                        typeof data?.maxResults === "number"
-                          ? data.maxResults
-                          : jiraMaxResults
-                      );
                     } catch (err) {
                       setJiraError(
                         err instanceof Error
@@ -616,7 +584,6 @@ export default function ConfiguracoesPage() {
               </div>
             </CardContent>
           </Card>
-        )}
 
         {/* PREFERÊNCIAS / FUTURO */}
         <Card

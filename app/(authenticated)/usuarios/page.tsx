@@ -61,6 +61,7 @@ const securityRouteOptions = [
   { label: "Ações", value: "/acoes" },
   { label: "Playbooks", value: "/playbooks" },
   { label: "Ferramentas", value: "/ferramentas" },
+  { label: "Gestão de Contratos", value: "/ferramentas/gestao-contratos" },
   { label: "Auditoria", value: "/auditoria" },
   { label: "Sugestões/Problemas", value: "/sugestoes-problemas" },
   { label: "Sugestões Postura SM", value: "/sugestoes" },
@@ -104,7 +105,9 @@ export default function UsuariosPage() {
   const [usersActionMessage, setUsersActionMessage] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [securityEdits, setSecurityEdits] = useState<Record<number, string>>({});
+  const [roleEdits, setRoleEdits] = useState<Record<number, string>>({});
   const [updatingSecurityId, setUpdatingSecurityId] = useState<number | null>(null);
+  const [updatingRoleId, setUpdatingRoleId] = useState<number | null>(null);
   const [securityLevels, setSecurityLevels] = useState<SecurityLevel[]>([]);
   const [levelsLoading, setLevelsLoading] = useState(false);
   const [levelsError, setLevelsError] = useState<string | null>(null);
@@ -484,6 +487,70 @@ export default function UsuariosPage() {
     }
   }
 
+  async function handleUpdateUserRole(userId: number) {
+    const nextRole = roleEdits[userId];
+    if (!nextRole) return;
+    setUsersActionError(null);
+    setUsersActionMessage(null);
+    setUpdatingRoleId(userId);
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: nextRole }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível atualizar o perfil.");
+      }
+      const updatedRole =
+        typeof data?.user?.role === "string" ? data.user.role : nextRole;
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId ? { ...user, role: updatedRole } : user
+        )
+      );
+      setUsersActionMessage("Perfil atualizado com sucesso.");
+    } catch (err) {
+      setUsersActionError(
+        err instanceof Error ? err.message : "Não foi possível atualizar o perfil."
+      );
+    } finally {
+      setUpdatingRoleId(null);
+    }
+  }
+
+  async function handleDeleteUser(userId: number) {
+    if (currentUserId === userId) {
+      setUsersActionError("Você não pode excluir o próprio usuário conectado.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Tem certeza que deseja excluir este usuário? Essa ação não pode ser desfeita."
+    );
+    if (!confirmed) return;
+    setUsersActionError(null);
+    setUsersActionMessage(null);
+    setUpdatingUserId(userId);
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível excluir o usuário.");
+      }
+      setUsers((prev) => prev.filter((user) => user.id !== userId));
+      setUsersActionMessage("Usuário excluído com sucesso.");
+    } catch (err) {
+      setUsersActionError(
+        err instanceof Error ? err.message : "Não foi possível excluir o usuário."
+      );
+    } finally {
+      setUpdatingUserId(null);
+    }
+  }
+
   const totalUsers = users.length;
   const activeUsers = users.filter((user) => user.is_active).length;
   const inactiveUsers = Math.max(totalUsers - activeUsers, 0);
@@ -758,7 +825,55 @@ export default function UsuariosPage() {
                               isDark ? "text-zinc-300" : "text-slate-600"
                             )}
                           >
-                            {userItem.role}
+                            {accessDenied ? (
+                              userItem.role
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={roleEdits[userItem.id] ?? userItem.role}
+                                  onChange={(event) =>
+                                    setRoleEdits((prev) => ({
+                                      ...prev,
+                                      [userItem.id]: event.target.value,
+                                    }))
+                                  }
+                                  className={cn(
+                                    "rounded-lg border bg-transparent px-2 py-1 text-[11px] focus-visible:outline-none",
+                                    isDark
+                                      ? "border-zinc-700 text-zinc-100"
+                                      : "border-slate-200 text-slate-700"
+                                  )}
+                                >
+                                  {roleOptions.map((option) => (
+                                    <option
+                                      key={option.value}
+                                      value={option.value}
+                                      className={cn(
+                                        isDark
+                                          ? "bg-[#050816] text-white"
+                                          : "bg-white text-slate-700"
+                                      )}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg border-zinc-700 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                                  disabled={updatingRoleId === userItem.id}
+                                  onClick={() => handleUpdateUserRole(userItem.id)}
+                                >
+                                  {updatingRoleId === userItem.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    "Salvar"
+                                  )}
+                                </Button>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-zinc-400">
                             {accessDenied ? (
@@ -834,30 +949,42 @@ export default function UsuariosPage() {
                               : "-"}
                           </td>
                           <td className="px-4 py-3">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="rounded-xl border-zinc-700 text-xs text-zinc-200 hover:bg-zinc-800"
-                              disabled={
-                                updatingUserId === userItem.id ||
-                                (currentUserId === userItem.id && userItem.is_active)
-                              }
-                              onClick={() =>
-                                handleToggleUserStatus(
-                                  userItem.id,
-                                  userItem.is_active
-                                )
-                              }
-                            >
-                              {updatingUserId === userItem.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : userItem.is_active ? (
-                                "Inativar"
-                              ) : (
-                                "Reativar"
-                              )}
-                            </Button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="rounded-xl border-zinc-700 text-xs text-zinc-200 hover:bg-zinc-800"
+                                disabled={
+                                  updatingUserId === userItem.id ||
+                                  (currentUserId === userItem.id && userItem.is_active)
+                                }
+                                onClick={() =>
+                                  handleToggleUserStatus(
+                                    userItem.id,
+                                    userItem.is_active
+                                  )
+                                }
+                              >
+                                {updatingUserId === userItem.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : userItem.is_active ? (
+                                  "Inativar"
+                                ) : (
+                                  "Reativar"
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="rounded-xl border-rose-500/40 text-xs text-rose-200 hover:bg-rose-500/10"
+                                disabled={updatingUserId === userItem.id}
+                                onClick={() => handleDeleteUser(userItem.id)}
+                              >
+                                Excluir
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}

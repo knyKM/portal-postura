@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
-import { updateDashboardTemplate } from "@/lib/dashboards/dashboard-service";
+import { deleteDashboardTemplate, updateDashboardTemplate } from "@/lib/dashboards/dashboard-service";
 
 type ParamsPromise = Promise<{ id: string }>;
 
@@ -44,4 +44,27 @@ export async function PATCH(
       { status: 500 }
     );
   }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: ParamsPromise }
+) {
+  const session = await getSessionUser(request.headers.get("cookie") ?? undefined);
+  if (!session) {
+    return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
+  }
+
+  const resolvedParams = await params;
+  const id = Number(resolvedParams.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+  }
+
+  const deleted = deleteDashboardTemplate(id);
+  if (!deleted) {
+    return NextResponse.json({ error: "Template não encontrado." }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true });
 }

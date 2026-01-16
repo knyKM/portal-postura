@@ -1,5 +1,6 @@
 import { Agent } from "undici";
 import { getIntegrationSetting } from "@/lib/settings/integration-settings";
+import { getUserJiraSettings } from "@/lib/auth/user-service";
 import {
   getActionRequestById,
   updateActionRequestExecutionStatus,
@@ -17,7 +18,6 @@ import {
   toLabelValues,
 } from "@/lib/actions/assignee-fields";
 
-const DEFAULT_MAX_JIRA_RESULTS = 200;
 const DEFAULT_MAX_PARALLEL_JOBS = 3;
 
 type JiraConfig = {
@@ -42,11 +42,16 @@ class JiraApiError extends Error {
   }
 }
 
-function getJiraConfig(): JiraConfig {
-  const url = getIntegrationSetting("jira_url") ?? "";
-  const token = getIntegrationSetting("jira_token") ?? "";
-  const verifySetting = getIntegrationSetting("jira_verify_ssl");
-  return { url, token, verifySsl: verifySetting !== "false" };
+function getJiraConfig(requesterId: number | null): JiraConfig {
+  if (!requesterId) {
+    return { url: "", token: "", verifySsl: true };
+  }
+  const settings = getUserJiraSettings(requesterId);
+  return {
+    url: settings?.jira_url ?? "",
+    token: settings?.jira_token ?? "",
+    verifySsl: settings?.jira_verify_ssl !== "false",
+  };
 }
 
 function normalizeJiraUrl(url: string) {
@@ -213,30 +218,38 @@ async function jiraFetch(
 async function getIssueKeys(
   config: JiraConfig,
   filterMode: string,
-  filterValue: string,
-  maxResultsLimit: number
+  filterValue: string
 ) {
   if (filterMode === "ids") {
     return parseIssueIds(filterValue);
   }
   if (filterMode === "jql") {
-    const issues = await fetchIssuesByJql(config, filterValue, maxResultsLimit);
+    const issues = await fetchIssuesByJql(config, filterValue);
     return issues.map((issue) => issue.key);
   }
   return [];
 }
 
-async function fetchIssuesByJql(config: JiraConfig, jql: string, maxResultsLimit: number) {
+async function fetchIssuesByJql(config: JiraConfig, jql: string) {
   const issues: Array<{ key: string }> = [];
   let startAt = 0;
   const maxResults = 100;
+  let total: number | null = null;
 
-  while (issues.length < maxResultsLimit) {
+  while (total === null || issues.length < total) {
     const response = await jiraFetch(
       config,
-      `/rest/api/2/search?jql=${encodeURIComponent(
-        jql
-      )}&startAt=${startAt}&maxResults=${maxResults}&fields=key`
+      "/rest/api/2/search",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jql,
+          startAt,
+          maxResults,
+          fields: ["key"],
+        }),
+      }
     );
     const raw = await response.text();
     let data: Record<string, unknown> | null = null;
@@ -262,15 +275,11 @@ async function fetchIssuesByJql(config: JiraConfig, jql: string, maxResultsLimit
         .filter((key: string | undefined) => typeof key === "string")
         .map((key: string) => ({ key }))
     );
-    const total = typeof data?.total === "number" ? data.total : issues.length;
+    total = typeof data?.total === "number" ? data.total : issues.length;
     startAt += maxResults;
-    if (issues.length >= total || issues.length >= maxResultsLimit) {
+    if (issues.length >= total || fetched.length === 0) {
       break;
     }
-  }
-
-  if (issues.length >= maxResultsLimit) {
-    throw new JiraApiError("", 400);
   }
 
   return issues;
@@ -430,19 +439,13 @@ export async function executeActionJob(jobId: number, requestId: number) {
     return;
   }
 
-  const jiraConfig = getJiraConfig();
+  const jiraConfig = getJiraConfig(targetRequest.requester_id);
   if (!jiraConfig.url || !jiraConfig.token) {
     updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
     updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
     return;
   }
 
-  const maxResultsSetting = Number(
-    getIntegrationSetting("jira_max_results") ?? DEFAULT_MAX_JIRA_RESULTS
-  );
-  const maxResultsLimit = Number.isFinite(maxResultsSetting)
-    ? Math.max(1, Math.floor(maxResultsSetting))
-    : DEFAULT_MAX_JIRA_RESULTS;
   let issueKeys: string[] = [];
   let bulkFieldsByIssue: Map<string, Record<string, unknown>> | null = null;
   try {
@@ -457,8 +460,7 @@ export async function executeActionJob(jobId: number, requestId: number) {
       issueKeys = await getIssueKeys(
         jiraConfig,
         targetRequest.filter_mode,
-        targetRequest.filter_value,
-        maxResultsLimit
+        targetRequest.filter_value
       );
     }
   } catch (err) {

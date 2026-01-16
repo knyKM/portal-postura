@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type SuggestionRecord = {
   id: number;
@@ -41,11 +42,19 @@ export function createSuggestion({
     throw new Error("O conteúdo da sugestão não pode estar vazio.");
   }
 
+  const now = getLocalTimestamp();
   const stmt = db.prepare(
-    `INSERT INTO idea_suggestions (user_id, user_email, user_name, content)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO idea_suggestions (user_id, user_email, user_name, content, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
-  const result = stmt.run(userId, userEmail, userName, trimmedContent);
+  const result = stmt.run(
+    userId,
+    userEmail,
+    userName,
+    trimmedContent,
+    now,
+    now
+  );
   const insertedId = Number(result.lastInsertRowid);
 
   const record = getSuggestionById(insertedId);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Agent } from "undici";
 import { getSessionUser } from "@/lib/auth/session";
-import { getIntegrationSetting } from "@/lib/settings/integration-settings";
+import { getUserJiraSettings } from "@/lib/auth/user-service";
 
 export async function GET(request: Request) {
   const session = await getSessionUser(request.headers.get("cookie") ?? undefined);
@@ -15,10 +15,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Informe a JQL." }, { status: 400 });
   }
 
-  const url = getIntegrationSetting("jira_url") ?? "";
-  const token = getIntegrationSetting("jira_token") ?? "";
-  const verifySetting = getIntegrationSetting("jira_verify_ssl");
-  const verifySsl = verifySetting !== "false";
+  const settings = getUserJiraSettings(session.id);
+  const url = settings?.jira_url ?? "";
+  const token = settings?.jira_token ?? "";
+  const verifySsl = settings?.jira_verify_ssl !== "false";
 
   if (!url || !token) {
     return NextResponse.json(
@@ -31,17 +31,16 @@ export async function GET(request: Request) {
   const dispatcher = verifySsl
     ? undefined
     : new Agent({ connect: { rejectUnauthorized: false } });
-  const response = await fetch(
-    `${baseUrl}/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=0`,
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      dispatcher,
-    }
-  );
+  const response = await fetch(`${baseUrl}/rest/api/2/search`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ jql, maxResults: 0, fields: [] }),
+    dispatcher,
+  });
 
   const raw = await response.text();
   let data: Record<string, unknown> | null = null;

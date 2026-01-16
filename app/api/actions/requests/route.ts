@@ -17,6 +17,7 @@ import {
 import { listAdmins } from "@/lib/auth/user-service";
 import { createNotification } from "@/lib/notifications/notification-service";
 import { getIntegrationSetting } from "@/lib/settings/integration-settings";
+import { getUserJiraSettings } from "@/lib/auth/user-service";
 import { createActionExecutionJob } from "@/lib/actions/action-job-service";
 import { startQueuedJobs } from "@/lib/actions/jira-action-runner";
 
@@ -69,8 +70,6 @@ const ACTION_LABELS: Record<string, string> = {
   delete: "deletar issue",
 };
 
-const DEFAULT_MAX_JIRA_RESULTS = 200;
-
 type JiraConfig = {
   url: string;
   token: string;
@@ -112,11 +111,16 @@ function safeParsePayload(raw: string) {
   }
 }
 
-function getJiraConfig(): JiraConfig {
-  const url = getIntegrationSetting("jira_url") ?? "";
-  const token = getIntegrationSetting("jira_token") ?? "";
-  const verifySetting = getIntegrationSetting("jira_verify_ssl");
-  return { url, token, verifySsl: verifySetting !== "false" };
+function getJiraConfig(userId: number | null) {
+  if (!userId) {
+    return { url: "", token: "", verifySsl: true };
+  }
+  const settings = getUserJiraSettings(userId);
+  return {
+    url: settings?.jira_url ?? "",
+    token: settings?.jira_token ?? "",
+    verifySsl: settings?.jira_verify_ssl !== "false",
+  };
 }
 
 function normalizeJiraUrl(url: string) {
@@ -159,21 +163,26 @@ async function jiraFetch(
   });
 }
 
-async function fetchIssuesByJql(
-  config: JiraConfig,
-  jql: string,
-  maxResultsLimit: number
-) {
+async function fetchIssuesByJql(config: JiraConfig, jql: string) {
   const issues: Array<{ key: string }> = [];
   let startAt = 0;
   const maxResults = 100;
+  let total: number | null = null;
 
-  while (issues.length < maxResultsLimit) {
+  while (total === null || issues.length < total) {
     const response = await jiraFetch(
       config,
-      `/rest/api/2/search?jql=${encodeURIComponent(
-        jql
-      )}&startAt=${startAt}&maxResults=${maxResults}&fields=key`
+      "/rest/api/2/search",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jql,
+          startAt,
+          maxResults,
+          fields: ["key"],
+        }),
+      }
     );
     const data = await response.json().catch(() => null);
     if (!response.ok) {
@@ -190,20 +199,11 @@ async function fetchIssuesByJql(
         .filter((key: string | undefined) => typeof key === "string")
         .map((key: string) => ({ key }))
     );
-    const total = typeof data?.total === "number" ? data.total : issues.length;
+    total = typeof data?.total === "number" ? data.total : issues.length;
     startAt += maxResults;
-    if (issues.length >= total) {
+    if (issues.length >= total || fetched.length === 0) {
       break;
     }
-    if (issues.length >= maxResultsLimit) {
-      break;
-    }
-  }
-
-  if (issues.length >= maxResultsLimit) {
-    throw new Error(
-      `A consulta retornou mais de ${maxResultsLimit} issues. Refine a JQL antes de aprovar.`
-    );
   }
 
   return issues;
@@ -732,10 +732,10 @@ export async function PATCH(request: Request) {
     decision === "approve" &&
     ["status", "assignee", "comment"].includes(targetRequest.action_type)
   ) {
-    const jiraConfig = getJiraConfig();
+    const jiraConfig = getJiraConfig(targetRequest.requester_id);
     if (!jiraConfig.url || !jiraConfig.token) {
       return NextResponse.json(
-        { error: "Integração Jira não configurada." },
+        { error: "Integração Jira não configurada para o solicitante." },
         { status: 400 }
       );
     }

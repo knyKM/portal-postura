@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 import type {
   AutomationJob,
   AutomationJobStatus,
@@ -118,7 +119,7 @@ export async function listAutomationSnapshot(limitLogs = 20) {
   return {
     jobs: jobRows.map(mapRowToJob),
     logs: logRows.map(mapLogRow),
-    generatedAt: new Date().toISOString(),
+    generatedAt: getLocalTimestamp(),
   };
 }
 
@@ -132,7 +133,7 @@ type CreateAutomationJobInput = {
 
 export async function createAutomationJob(input: CreateAutomationJobInput) {
   const id = randomUUID();
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   db.prepare(
     `INSERT INTO automation_jobs
       (id, name, description, owner, queue_seconds, pending_issues, duration_seconds, last_run, status_code, created_at, updated_at)
@@ -187,7 +188,7 @@ export async function updateAutomationJobStatus(
     throw new Error("Job não encontrado.");
   }
 
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   const nextQueueSeconds =
     typeof payload.queueSeconds === "number"
       ? Math.max(0, Math.round(payload.queueSeconds))
@@ -282,7 +283,7 @@ export async function updateAutomationJobMetadata(
       ? Math.max(0, Math.round(updates.pendingIssues))
       : existing.pending_issues ?? 0;
 
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   db.prepare(
     `UPDATE automation_jobs
        SET name = ?, owner = ?, description = ?, queue_seconds = ?, pending_issues = ?, updated_at = ?

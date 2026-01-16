@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type ActionExecutionJobRecord = {
   id: number;
@@ -13,11 +14,12 @@ export type ActionExecutionJobRecord = {
 };
 
 export function createActionExecutionJob(requestId: number) {
+  const now = getLocalTimestamp();
   const insert = db.prepare(
-    `INSERT INTO action_execution_jobs (request_id, status)
-     VALUES (?, 'queued')`
+    `INSERT INTO action_execution_jobs (request_id, status, created_at)
+     VALUES (?, 'queued', ?)`
   );
-  const result = insert.run(requestId);
+  const result = insert.run(requestId, now);
   const fetch = db.prepare<ActionExecutionJobRecord>(
     "SELECT * FROM action_execution_jobs WHERE id = ?"
   );
@@ -37,8 +39,8 @@ export function updateJobStatus({
     `UPDATE action_execution_jobs
      SET status = ?,
          error_message = ?,
-         started_at = CASE WHEN ? = 'running' THEN CURRENT_TIMESTAMP ELSE started_at END,
-         finished_at = CASE WHEN ? IN ('completed','failed') THEN CURRENT_TIMESTAMP ELSE finished_at END
+         started_at = CASE WHEN ? = 'running' THEN datetime('now','localtime') ELSE started_at END,
+         finished_at = CASE WHEN ? IN ('completed','failed') THEN datetime('now','localtime') ELSE finished_at END
      WHERE id = ?`
   );
   stmt.run(status, errorMessage ?? null, status, status, id);

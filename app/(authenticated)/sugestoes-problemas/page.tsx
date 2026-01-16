@@ -54,7 +54,7 @@ export default function SugestoesProblemasPage() {
                 : "border-slate-200 bg-white text-slate-900 hover:border-purple-300 hover:bg-purple-50"
             )}
           >
-            <CardContent className="p-0">
+            <CardContent className="flex h-full flex-col p-0">
               <div className="flex items-center gap-3">
                 <span
                   className={cn(
@@ -79,6 +79,28 @@ export default function SugestoesProblemasPage() {
                 Registre solicitações e acompanhe o fluxo de atendimento no
                 Kanban.
               </p>
+              <div
+                className={cn(
+                  "mt-6 flex min-h-[360px] flex-1 flex-col justify-between rounded-[28px] border px-6 py-6",
+                  isDark
+                    ? "border-white/10 bg-gradient-to-br from-[#0a1024] to-[#05060f]"
+                    : "border-slate-200 bg-gradient-to-br from-white to-purple-50"
+                )}
+              >
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-xs uppercase tracking-[0.5em] text-zinc-400">
+                      Logo
+                    </p>
+                    <p className="mt-3 text-3xl font-semibold text-purple-200">
+                      JIRA
+                    </p>
+                  </div>
+                </div>
+                <div className="text-sm text-zinc-400">
+                  JIRA · Registre solicitações e acompanhe atendimentos.
+                </div>
+              </div>
             </CardContent>
           </Card>
         </Link>
@@ -92,7 +114,7 @@ export default function SugestoesProblemasPage() {
                 : "border-slate-200 bg-white text-slate-900 hover:border-cyan-200 hover:bg-cyan-50"
             )}
           >
-            <CardContent className="p-0">
+            <CardContent className="flex h-full flex-col p-0">
               <div className="flex items-center gap-3">
                 <span
                   className={cn(
@@ -116,6 +138,28 @@ export default function SugestoesProblemasPage() {
               <p className="mt-3 text-sm text-zinc-400">
                 Envie ideias e melhorias para o backlog interno da plataforma.
               </p>
+              <div
+                className={cn(
+                  "mt-6 flex min-h-[360px] flex-1 flex-col justify-between rounded-[28px] border px-6 py-6",
+                  isDark
+                    ? "border-white/10 bg-gradient-to-br from-[#0a1024] to-[#05060f]"
+                    : "border-slate-200 bg-gradient-to-br from-white to-cyan-50"
+                )}
+              >
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-xs uppercase tracking-[0.5em] text-zinc-400">
+                      Logo
+                    </p>
+                    <p className="mt-3 text-3xl font-semibold text-cyan-200">
+                      Postura SM
+                    </p>
+                  </div>
+                </div>
+                <div className="text-sm text-zinc-400">
+                  Postura SM · Envie sugestões para o backlog interno.
+                </div>
+              </div>
             </CardContent>
           </Card>
         </Link>

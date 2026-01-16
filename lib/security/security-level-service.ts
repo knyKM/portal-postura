@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type SecurityLevelRecord = {
   key: string;
@@ -75,8 +76,9 @@ export function createSecurityLevel(
   if (exists) {
     throw new Error("Já existe um nível com esse nome.");
   }
+  const now = getLocalTimestamp();
   const stmt = db.prepare(
-    "INSERT INTO security_levels (key, name, description, allowed_routes) VALUES (?, ?, ?, ?)"
+    "INSERT INTO security_levels (key, name, description, allowed_routes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
   );
   const allowedRoutes = Array.isArray(input.allowedRoutes)
     ? input.allowedRoutes
@@ -85,7 +87,9 @@ export function createSecurityLevel(
     key,
     input.name.trim(),
     input.description?.trim() || null,
-    JSON.stringify(allowedRoutes)
+    JSON.stringify(allowedRoutes),
+    now,
+    now
   );
   const created = getSecurityLevelByKey(key);
   if (!created) {

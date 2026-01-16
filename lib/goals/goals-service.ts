@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type GoalRecord = {
   id: number;
@@ -7,6 +8,8 @@ export type GoalRecord = {
   owner: string;
   description: string | null;
   due_date: string | null;
+  start_month: string | null;
+  end_month: string | null;
   target_type: "percent" | "value";
   target_value: number;
   target_unit: string | null;
@@ -31,7 +34,8 @@ export type GoalInput = {
   front: string;
   owner: string;
   description?: string | null;
-  dueDate?: string | null;
+  startMonth?: string | null;
+  endMonth?: string | null;
   targetType: "percent" | "value";
   targetValue: number;
   targetUnit?: string | null;
@@ -46,10 +50,24 @@ export type GoalUpdateInput = {
   progressDate: string;
 };
 
+export type GoalUpdatePayload = {
+  id: number;
+  name: string;
+  front: string;
+  owner: string;
+  description?: string | null;
+  startMonth?: string | null;
+  endMonth?: string | null;
+  targetType: "percent" | "value";
+  targetValue: number;
+  targetUnit?: string | null;
+};
+
 export function listGoals() {
   return db
     .prepare<GoalRecord>(
-      `SELECT id, name, front, owner, description, due_date, target_type, target_value, target_unit,
+      `SELECT id, name, front, owner, description, due_date, start_month, end_month,
+              target_type, target_value, target_unit,
               created_at, updated_at
        FROM goals
        ORDER BY created_at DESC`
@@ -69,13 +87,14 @@ export function listGoalUpdates() {
 }
 
 export function createGoal(input: GoalInput) {
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   const record = db
     .prepare<GoalRecord>(
       `INSERT INTO goals
-        (name, front, owner, description, due_date, target_type, target_value, target_unit, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       RETURNING id, name, front, owner, description, due_date, target_type, target_value, target_unit,
+        (name, front, owner, description, due_date, start_month, end_month, target_type, target_value, target_unit, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id, name, front, owner, description, due_date, start_month, end_month,
+                 target_type, target_value, target_unit,
                  created_at, updated_at`
     )
     .get(
@@ -83,7 +102,9 @@ export function createGoal(input: GoalInput) {
       input.front,
       input.owner,
       input.description ?? null,
-      input.dueDate ?? null,
+      null,
+      input.startMonth ?? null,
+      input.endMonth ?? null,
       input.targetType,
       input.targetValue,
       input.targetUnit ?? null,
@@ -93,8 +114,35 @@ export function createGoal(input: GoalInput) {
   return record;
 }
 
+export function updateGoal(input: GoalUpdatePayload) {
+  const now = getLocalTimestamp();
+  const record = db
+    .prepare<GoalRecord>(
+      `UPDATE goals
+       SET name = ?, front = ?, owner = ?, description = ?, start_month = ?, end_month = ?,
+           target_type = ?, target_value = ?, target_unit = ?, updated_at = ?
+       WHERE id = ?
+       RETURNING id, name, front, owner, description, due_date, start_month, end_month,
+                 target_type, target_value, target_unit, created_at, updated_at`
+    )
+    .get(
+      input.name,
+      input.front,
+      input.owner,
+      input.description ?? null,
+      input.startMonth ?? null,
+      input.endMonth ?? null,
+      input.targetType,
+      input.targetValue,
+      input.targetUnit ?? null,
+      now,
+      input.id
+    );
+  return record ?? null;
+}
+
 export function createGoalUpdate(input: GoalUpdateInput) {
-  const now = new Date().toISOString();
+  const now = getLocalTimestamp();
   const target = db
     .prepare<Pick<GoalRecord, "target_value" | "target_type">>(
       "SELECT target_value, target_type FROM goals WHERE id = ?"

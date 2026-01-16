@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type NotificationRecord = {
   id: number;
@@ -28,12 +29,19 @@ export function createNotification({
   payload,
 }: CreateNotificationInput): NotificationRecord {
   const insert = db.prepare(
-    `INSERT INTO notifications (user_id, type, title, message, payload)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO notifications (user_id, type, title, message, payload, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
 
   const payloadString = payload ? JSON.stringify(payload) : null;
-  const result = insert.run(userId, type, title, message, payloadString);
+  const result = insert.run(
+    userId,
+    type,
+    title,
+    message,
+    payloadString,
+    getLocalTimestamp()
+  );
   const insertedId = Number(result.lastInsertRowid);
 
   const fetch = db.prepare<NotificationRecord>(
@@ -77,7 +85,7 @@ export function markNotificationsAsRead(
     const stmt = db.prepare(
       `UPDATE notifications
        SET is_read = 1,
-           read_at = CURRENT_TIMESTAMP
+           read_at = datetime('now','localtime')
        WHERE user_id = ?
          AND id IN (${placeholders})
          AND is_read = 0`
@@ -89,7 +97,7 @@ export function markNotificationsAsRead(
   const stmt = db.prepare(
     `UPDATE notifications
      SET is_read = 1,
-         read_at = CURRENT_TIMESTAMP
+         read_at = datetime('now','localtime')
      WHERE user_id = ?
        AND is_read = 0`
   );

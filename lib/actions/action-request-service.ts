@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type ActionRequestRecord = {
   id: number;
@@ -100,8 +101,8 @@ export function createActionRequest({
 }: CreateActionRequestInput): ActionRequestRecord {
   const insert = db.prepare(
     `INSERT INTO action_requests
-      (action_type, filter_mode, filter_value, requested_status, payload, requester_id, requester_email, requester_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      (action_type, filter_mode, filter_value, requested_status, payload, requester_id, requester_email, requester_name, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   const payloadString = payload ? JSON.stringify(payload) : null;
@@ -113,7 +114,8 @@ export function createActionRequest({
     payloadString,
     requester.id,
     requester.email,
-    requester.name
+    requester.name,
+    getLocalTimestamp()
   );
 
   const id = Number(result.lastInsertRowid);
@@ -265,7 +267,7 @@ export function updateActionRequestStatus({
   const stmt = db.prepare(
     `UPDATE action_requests
      SET status = ?,
-         approved_at = CURRENT_TIMESTAMP,
+         approved_at = datetime('now','localtime'),
          approved_by = ?,
          audit_notes = ?
      WHERE id = ?`
@@ -387,7 +389,7 @@ export function cancelActionRequestByRequester({
   const stmt = db.prepare(
     `UPDATE action_requests
      SET status = 'cancelled',
-         approved_at = CURRENT_TIMESTAMP,
+         approved_at = datetime('now','localtime'),
          approved_by = NULL,
          audit_notes = NULL
      WHERE id = ?
@@ -421,10 +423,10 @@ export function createActionRequestEvent({
   actorName?: string | null;
 }) {
   const stmt = db.prepare(
-    `INSERT INTO action_request_events (request_id, type, message, actor_name)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO action_request_events (request_id, type, message, actor_name, created_at)
+     VALUES (?, ?, ?, ?, ?)`
   );
-  stmt.run(requestId, type, message ?? null, actorName ?? null);
+  stmt.run(requestId, type, message ?? null, actorName ?? null, getLocalTimestamp());
 }
 
 export function listActionRequestEvents(requestId: number) {
@@ -505,6 +507,9 @@ export function createActionRequestMessage({
 
   columns.push("message");
   values.push(message);
+
+  columns.push("created_at");
+  values.push(getLocalTimestamp());
 
   const placeholders = columns.map(() => "?").join(", ");
   const stmt = db.prepare(

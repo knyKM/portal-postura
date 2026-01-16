@@ -1,4 +1,5 @@
 import { db } from "@/lib/auth/database";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type TopologyNode = {
   id: string;
@@ -81,15 +82,18 @@ type CreateTopologyInput = {
 };
 
 export function createTopology(data: CreateTopologyInput): Topology {
+  const now = getLocalTimestamp();
   const stmt = db.prepare(
-    `INSERT INTO topologies (name, nodes, links, custom_types)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO topologies (name, nodes, links, custom_types, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
   const info = stmt.run(
     data.name,
     JSON.stringify(data.nodes ?? []),
     JSON.stringify(data.links ?? []),
-    JSON.stringify(data.customTypes ?? [])
+    JSON.stringify(data.customTypes ?? []),
+    now,
+    now
   );
   const fetch = db.prepare<TopologyRecord>(
     "SELECT * FROM topologies WHERE id = ?"
@@ -119,7 +123,7 @@ export function updateTopology(
 
   const stmt = db.prepare(
     `UPDATE topologies
-     SET name = ?, nodes = ?, links = ?, custom_types = ?, updated_at = CURRENT_TIMESTAMP
+     SET name = ?, nodes = ?, links = ?, custom_types = ?, updated_at = datetime('now','localtime')
      WHERE id = ?`
   );
 

@@ -1,5 +1,6 @@
 import { db } from "@/lib/auth/database";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 export type UserRecord = {
   id: number;
@@ -13,6 +14,9 @@ export type UserRecord = {
   mfa_secret: string | null;
   mfa_enabled: number;
   last_seen_at: string | null;
+  jira_url: string | null;
+  jira_token: string | null;
+  jira_verify_ssl: string | null;
   created_at: string;
 };
 
@@ -37,7 +41,7 @@ function seedAdmin() {
 
   if (!existing) {
   const insert = db.prepare(
-    "INSERT INTO users (email, password_hash, name, avatar, role, security_level, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)"
+    "INSERT INTO users (email, password_hash, name, avatar, role, security_level, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)"
   );
   insert.run(
     seedUser.email,
@@ -45,7 +49,8 @@ function seedAdmin() {
     seedUser.name,
     seedUser.avatar,
     seedUser.role,
-    "padrao"
+    "padrao",
+    getLocalTimestamp()
   );
 } else if (existing.role !== seedUser.role || existing.is_active !== 1) {
   const update = db.prepare(
@@ -60,7 +65,7 @@ function seedAdmin() {
 export function findUserByEmail(email: string): UserRecord | undefined {
   seedAdmin();
   const stmt = db.prepare(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, created_at FROM users WHERE email = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE email = ?"
   );
   return stmt.get(email);
 }
@@ -105,7 +110,7 @@ export function createUser({
   const normalizedEmail = email.trim().toLowerCase();
 
   const insert = db.prepare(
-    "INSERT INTO users (name, email, password_hash, role, security_level, avatar, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)"
+    "INSERT INTO users (name, email, password_hash, role, security_level, avatar, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)"
   );
 
   const result = insert.run(
@@ -114,13 +119,14 @@ export function createUser({
     hashPassword(password),
     role,
     securityLevel,
-    avatar
+    avatar,
+    getLocalTimestamp()
   );
 
   const insertedId = Number(result.lastInsertRowid);
 
   const fetchNew = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
   );
   const created = fetchNew.get(insertedId);
 
@@ -179,7 +185,7 @@ export function updateUserActiveStatus(
   }
 
   const fetch = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
   );
   return fetch.get(userId) ?? null;
 }
@@ -197,9 +203,57 @@ export function updateUserSecurityLevel(
     return null;
   }
   const fetch = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
   );
   return fetch.get(userId) ?? null;
+}
+
+export function updateUserRole(userId: number, role: string): UserRecord | null {
+  seedAdmin();
+  const update = db.prepare("UPDATE users SET role = ? WHERE id = ?");
+  const result = update.run(role, userId);
+  if (result.changes === 0) {
+    return null;
+  }
+  const fetch = db.prepare<UserRecord>(
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
+  );
+  return fetch.get(userId) ?? null;
+}
+
+export function getUserJiraSettings(userId: number) {
+  seedAdmin();
+  const stmt = db.prepare<{
+    jira_url: string | null;
+    jira_token: string | null;
+    jira_verify_ssl: string | null;
+  }>("SELECT jira_url, jira_token, jira_verify_ssl FROM users WHERE id = ?");
+  return stmt.get(userId) ?? null;
+}
+
+export function updateUserJiraSettings(
+  userId: number,
+  input: { url?: string | null; token?: string | null; verifySsl?: boolean }
+) {
+  seedAdmin();
+  const url = input.url ?? null;
+  const token = input.token ?? null;
+  const verifySsl = input.verifySsl === false ? "false" : "true";
+  const update = db.prepare(
+    "UPDATE users SET jira_url = ?, jira_token = ?, jira_verify_ssl = ? WHERE id = ?"
+  );
+  const result = update.run(url, token, verifySsl, userId);
+  if (result.changes === 0) {
+    return null;
+  }
+  return getUserJiraSettings(userId);
+}
+
+export function deleteUser(userId: number): boolean {
+  seedAdmin();
+  const stmt = db.prepare("DELETE FROM users WHERE id = ?");
+  const result = stmt.run(userId);
+  return result.changes > 0;
 }
 
 export function countUsersBySecurityLevel(securityLevel: string) {
@@ -214,7 +268,7 @@ export function countUsersBySecurityLevel(securityLevel: string) {
 export function findUserById(id: number): UserRecord | undefined {
   seedAdmin();
   const stmt = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
   );
   return stmt.get(id);
 }
@@ -236,7 +290,7 @@ export function enableUserMfa(userId: number) {
 export function updateUserLastSeen(userId: number) {
   seedAdmin();
   const stmt = db.prepare(
-    "UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?"
+    "UPDATE users SET last_seen_at = datetime('now','localtime') WHERE id = ?"
   );
   stmt.run(userId);
 }
