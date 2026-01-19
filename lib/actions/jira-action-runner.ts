@@ -429,6 +429,26 @@ async function addIssueComment(
   }
 }
 
+async function deleteIssue(config: JiraConfig, issueKey: string) {
+  const response = await jiraFetch(
+    config,
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}`,
+    { method: "DELETE" }
+  );
+  if (!response.ok) {
+    const raw = await response.text();
+    let data: Record<string, unknown> | null = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        data = null;
+      }
+    }
+    throw new JiraApiError(extractErrorMessage(raw, data), response.status);
+  }
+}
+
 export async function executeActionJob(jobId: number, requestId: number) {
   updateJobStatus({ id: jobId, status: "running" });
   updateActionRequestExecutionStatus({ id: requestId, status: "running" });
@@ -546,6 +566,8 @@ export async function executeActionJob(jobId: number, requestId: number) {
           throw new JiraApiError("", 400);
         }
         await addIssueComment(jiraConfig, key, comment);
+      } else if (targetRequest.action_type === "delete") {
+        await deleteIssue(jiraConfig, key);
       } else {
         throw new JiraApiError("", 400);
       }

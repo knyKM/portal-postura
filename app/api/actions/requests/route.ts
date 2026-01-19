@@ -730,7 +730,7 @@ export async function PATCH(request: Request) {
 
   if (
     decision === "approve" &&
-    ["status", "assignee", "comment"].includes(targetRequest.action_type)
+    ["status", "assignee", "comment", "delete"].includes(targetRequest.action_type)
   ) {
     const jiraConfig = getJiraConfig(targetRequest.requester_id);
     if (!jiraConfig.url || !jiraConfig.token) {
