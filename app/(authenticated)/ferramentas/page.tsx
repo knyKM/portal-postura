@@ -8,6 +8,7 @@ import { useTheme } from "@/components/theme/theme-provider";
 import {
   Activity,
   FileText,
+  Filter,
   KanbanSquare,
   Network,
   Target,
@@ -63,6 +64,13 @@ const tools = [
     description: "Centralize contratos e acompanhamento operacional.",
     href: "/ferramentas/gestao-contratos",
     icon: FileText,
+  },
+  {
+    id: "validador-status",
+    title: "Validador de Status",
+    description: "Peneire chamados de alteração de status antes da aprovação.",
+    href: "/ferramentas/validador-status",
+    icon: Filter,
   },
 ];
 

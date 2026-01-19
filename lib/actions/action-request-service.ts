@@ -316,6 +316,38 @@ export function updateActionRequestExecutionStatus({
   return fetch.get(id);
 }
 
+export function updateActionRequestFilterValue({
+  id,
+  filterMode,
+  filterValue,
+  actorName,
+  message,
+}: {
+  id: number;
+  filterMode: string;
+  filterValue: string;
+  actorName: string;
+  message?: string | null;
+}) {
+  const stmt = db.prepare(
+    `UPDATE action_requests
+     SET filter_mode = ?,
+         filter_value = ?
+     WHERE id = ?`
+  );
+  stmt.run(filterMode, filterValue, id);
+  createActionRequestEvent({
+    requestId: id,
+    type: "filtered",
+    actorName,
+    message: message ?? null,
+  });
+  const fetch = db.prepare<ActionRequestRecord>(
+    "SELECT * FROM action_requests WHERE id = ?"
+  );
+  return fetch.get(id);
+}
+
 export function deleteActionRequest(id: number) {
   const remove = db.transaction(() => {
     db.prepare("DELETE FROM action_request_messages WHERE request_id = ?").run(id);
