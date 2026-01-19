@@ -63,6 +63,12 @@ const hasJiraTokenColumn = tableInfo.some((column) => column.name === "jira_toke
 const hasJiraVerifyColumn = tableInfo.some(
   (column) => column.name === "jira_verify_ssl"
 );
+const hasTenableAccessKeyColumn = tableInfo.some(
+  (column) => column.name === "tenable_access_key"
+);
+const hasTenableSecretKeyColumn = tableInfo.some(
+  (column) => column.name === "tenable_secret_key"
+);
 
 if (!hasRoleColumn) {
   db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'analista'");
@@ -100,6 +106,12 @@ if (!hasJiraTokenColumn) {
 }
 if (!hasJiraVerifyColumn) {
   db.exec("ALTER TABLE users ADD COLUMN jira_verify_ssl TEXT");
+}
+if (!hasTenableAccessKeyColumn) {
+  db.exec("ALTER TABLE users ADD COLUMN tenable_access_key TEXT");
+}
+if (!hasTenableSecretKeyColumn) {
+  db.exec("ALTER TABLE users ADD COLUMN tenable_secret_key TEXT");
 }
 
 db.exec(`
@@ -425,6 +437,9 @@ db.exec(`
     remediation TEXT,
     affected TEXT,
     score REAL DEFAULT 0,
+    source TEXT DEFAULT 'manual',
+    external_id TEXT,
+    last_synced_at TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
@@ -436,6 +451,43 @@ db.exec(`
     ip TEXT NOT NULL,
     environment TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+`);
+
+const vulnerabilityTableInfo = db
+  .prepare("PRAGMA table_info(vulnerabilities)")
+  .all() as TableInfoRow[];
+
+const hasVulnSourceColumn = vulnerabilityTableInfo.some(
+  (column) => column.name === "source"
+);
+const hasVulnExternalIdColumn = vulnerabilityTableInfo.some(
+  (column) => column.name === "external_id"
+);
+const hasVulnLastSyncedAtColumn = vulnerabilityTableInfo.some(
+  (column) => column.name === "last_synced_at"
+);
+
+if (!hasVulnSourceColumn) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN source TEXT DEFAULT 'manual'");
+}
+if (!hasVulnExternalIdColumn) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN external_id TEXT");
+}
+if (!hasVulnLastSyncedAtColumn) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN last_synced_at TEXT");
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tenable_scans (
+    scan_id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    status TEXT,
+    scan_type TEXT,
+    last_modification_date INTEGER,
+    details_json TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
@@ -511,6 +563,32 @@ db.exec(`
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_jira_suggestions_status
   ON jira_suggestions (status, created_at);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS contracts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    vendor TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    area TEXT,
+    contract_type TEXT,
+    status TEXT NOT NULL DEFAULT 'ativo',
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    alert_days INTEGER DEFAULT 30,
+    value_amount REAL,
+    value_currency TEXT,
+    description TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_contracts_status_end
+  ON contracts (status, end_date);
 `);
 
 db.exec(`
@@ -1122,6 +1200,88 @@ if ((playbookCount?.total ?? 0) === 0) {
   });
 }
 
+const insertPlaybook = db.prepare(
+  `INSERT INTO playbooks
+    (name, description, squads, automations, status, last_run, steps, script_path)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+);
+
+function ensurePlaybook(seed: {
+  name: string;
+  description: string;
+  squads: string[];
+  automations: string[];
+  status: string;
+  last_run: string;
+  steps: { title: string; detail: string }[];
+  scriptPath: string;
+}) {
+  const exists = db
+    .prepare<{ id: number }>("SELECT id FROM playbooks WHERE name = ?")
+    .get(seed.name);
+  if (exists) return;
+  insertPlaybook.run(
+    seed.name,
+    seed.description,
+    JSON.stringify(seed.squads),
+    JSON.stringify(seed.automations),
+    seed.status,
+    seed.last_run,
+    JSON.stringify(seed.steps),
+    seed.scriptPath
+  );
+}
+
+ensurePlaybook({
+  name: "Sync plugins Tenable",
+  description:
+    "Sincroniza diariamente o catálogo de vulnerabilidades (plugins) do Tenable.VM.",
+  squads: ["Vulnerability Ops"],
+  automations: ["Agendamento diário", "Execução manual sob demanda"],
+  status: "pronto",
+  last_run: "Em preparação",
+  steps: [
+    {
+      title: "Conectar à API Tenable",
+      detail: "Valida access key e secret key configuradas nas integrações.",
+    },
+    {
+      title: "Coletar plugins",
+      detail: "Atualiza título, descrição detalhada e solução de mitigação.",
+    },
+    {
+      title: "Persistir catálogo",
+      detail: "Atualiza banco local e registra data da última sincronização.",
+    },
+  ],
+  scriptPath: "api/tenable/sync-plugins",
+});
+
+ensurePlaybook({
+  name: "Sync scans Tenable",
+  description:
+    "Sincroniza a lista de scans e detalhes para correlacionar ativos e vulnerabilidades.",
+  squads: ["Vulnerability Ops", "Infra Sec"],
+  automations: ["Agendamento diário", "Execução manual sob demanda"],
+  status: "pronto",
+  last_run: "Em preparação",
+  steps: [
+    {
+      title: "Listar scans",
+      detail: "Consulta os scans disponíveis e identifica execuções recentes.",
+    },
+    {
+      title: "Detalhar execuções",
+      detail: "Coleta metadados completos de cada scan no Tenable.VM.",
+    },
+    {
+      title: "Persistir histórico",
+      detail: "Armazena dados para consumo na gestão de vulnerabilidades.",
+    },
+  ],
+  scriptPath: "api/tenable/sync-scans",
+});
+
 type CountRow = {
   total: number;
 };
@@ -1225,5 +1385,46 @@ if ((automationJobCount?.total ?? 0) === 0) {
     offsetMinutes(20)
   );
 }
+
+const ensureAutomationJob = db.prepare(
+  `INSERT INTO automation_jobs
+    (id, name, description, owner, queue_seconds, pending_issues, duration_seconds, last_run, status_code, created_at, updated_at)
+   VALUES (?, ?, ?, ?, 0, 0, 0, NULL, 3, ?, ?)`
+);
+
+function ensureAutomationJobExists(input: {
+  id: string;
+  name: string;
+  description: string;
+  owner: string;
+}) {
+  const exists = db
+    .prepare<{ id: string }>("SELECT id FROM automation_jobs WHERE id = ?")
+    .get(input.id);
+  if (exists) return;
+  const now = getLocalTimestamp();
+  ensureAutomationJob.run(
+    input.id,
+    input.name,
+    input.description,
+    input.owner,
+    now,
+    now
+  );
+}
+
+ensureAutomationJobExists({
+  id: "tenable-plugins-sync",
+  name: "Sync plugins Tenable",
+  description: "Atualiza catálogo de vulnerabilidades Tenable (plugins).",
+  owner: "Automação Tenable",
+});
+
+ensureAutomationJobExists({
+  id: "tenable-scans-sync",
+  name: "Sync scans Tenable",
+  description: "Atualiza execuções e metadados dos scans Tenable.",
+  owner: "Automação Tenable",
+});
 
 export { db };

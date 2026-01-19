@@ -8,7 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Layers, Workflow, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
+import {
+  Layers,
+  Workflow,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  PlayCircle,
+  Zap,
+} from "lucide-react";
 import { ScriptPickerModal } from "@/components/playbooks/script-picker-modal";
 
 type PlaybookCondition = {
@@ -58,6 +66,22 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
   const [scriptModalOpen, setScriptModalOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [tenableAutoEnabled, setTenableAutoEnabled] = useState(false);
+  const [tenableAutoLoading, setTenableAutoLoading] = useState(false);
+  const [tenableAutoError, setTenableAutoError] = useState<string | null>(null);
+  const [tenableSyncing, setTenableSyncing] = useState(false);
+  const [tenableSyncMessage, setTenableSyncMessage] = useState<string | null>(null);
+  const [tenableSyncError, setTenableSyncError] = useState<string | null>(null);
+
+  const tenableTarget = useMemo(() => {
+    const signature = `${playbook?.name ?? ""} ${playbook?.scriptPath ?? ""}`.toLowerCase();
+    if (!signature.includes("tenable")) return null;
+    if (signature.includes("plugin")) return "plugins";
+    if (signature.includes("scan")) return "scans";
+    return null;
+  }, [playbook?.name, playbook?.scriptPath]);
+
+  const hasTenableAutomation = Boolean(tenableTarget);
 
   useEffect(() => {
     if (!playbookId) return;
@@ -109,6 +133,110 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
       // ignore parse errors
     }
   }, []);
+
+  useEffect(() => {
+    if (!hasTenableAutomation) return;
+    if (!isAdmin) {
+      setTenableAutoError("Disponível apenas para administradores.");
+      return;
+    }
+    const controller = new AbortController();
+    async function fetchAutomationSettings() {
+      setTenableAutoLoading(true);
+      setTenableAutoError(null);
+      try {
+        const response = await fetch("/api/integrations/tenable/automation", {
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Não foi possível carregar o agendamento.");
+        }
+        const nextEnabled =
+          tenableTarget === "plugins" ? data?.pluginsAuto : data?.scansAuto;
+        setTenableAutoEnabled(Boolean(nextEnabled));
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setTenableAutoError(
+          err instanceof Error ? err.message : "Falha ao carregar o agendamento."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setTenableAutoLoading(false);
+        }
+      }
+    }
+    fetchAutomationSettings();
+    return () => controller.abort();
+  }, [hasTenableAutomation, isAdmin, tenableTarget]);
+
+  async function handleTenableAutoToggle(nextEnabled: boolean) {
+    if (!tenableTarget) return;
+    setTenableAutoLoading(true);
+    setTenableAutoError(null);
+    try {
+      const payload =
+        tenableTarget === "plugins"
+          ? { pluginsAuto: nextEnabled }
+          : { scansAuto: nextEnabled };
+      const response = await fetch("/api/integrations/tenable/automation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível atualizar o agendamento.");
+      }
+      const applied =
+        tenableTarget === "plugins" ? data?.pluginsAuto : data?.scansAuto;
+      setTenableAutoEnabled(Boolean(applied));
+      setTenableSyncMessage(
+        nextEnabled
+          ? "Execução automática habilitada."
+          : "Execução automática desativada."
+      );
+    } catch (err) {
+      setTenableAutoError(
+        err instanceof Error ? err.message : "Falha ao atualizar o agendamento."
+      );
+    } finally {
+      setTenableAutoLoading(false);
+    }
+  }
+
+  async function handleTenableSync() {
+    if (!tenableTarget) return;
+    setTenableSyncing(true);
+    setTenableSyncError(null);
+    setTenableSyncMessage(null);
+    try {
+      const response = await fetch(
+        `/api/integrations/tenable/sync-${tenableTarget}`,
+        {
+          method: "POST",
+        }
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao executar sincronização.");
+      }
+      const total = typeof data?.synced === "number" ? data.synced : null;
+      setTenableSyncMessage(
+        total !== null
+          ? `Sincronização concluída. ${total} registros atualizados.`
+          : "Sincronização concluída com sucesso."
+      );
+    } catch (err) {
+      setTenableSyncError(
+        err instanceof Error ? err.message : "Falha ao executar sincronização."
+      );
+    } finally {
+      setTenableSyncing(false);
+    }
+  }
 
 type StepField = "title" | "detail";
 
@@ -330,7 +458,9 @@ function moveStep(index: number, direction: -1 | 1) {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2">
+        <section
+          className={`grid gap-4 ${hasTenableAutomation ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-2"}`}
+        >
           <Card className="border border-white/10 bg-[#040414]/80 text-zinc-100">
             <CardHeader>
               <div className="flex items-center justify-between gap-4">
@@ -418,6 +548,76 @@ function moveStep(index: number, direction: -1 | 1) {
               </p>
             </CardContent>
           </Card>
+          {hasTenableAutomation && (
+            <Card className="border border-white/10 bg-[#040414]/80 text-zinc-100">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold">
+                  Execução Tenable
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm text-zinc-300">
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                        Modo de execução
+                      </p>
+                      <p className="text-sm text-zinc-200">
+                        Automatize a sincronização diária ou rode sob demanda.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-zinc-200">
+                      <input
+                        type="checkbox"
+                        checked={tenableAutoEnabled}
+                        disabled={!isAdmin || tenableAutoLoading}
+                        onChange={(event) =>
+                          handleTenableAutoToggle(event.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-white/20 bg-black/60 text-purple-500"
+                      />
+                      Execução automática diária
+                    </label>
+                  </div>
+                  <p className="mt-3 text-xs text-zinc-500">
+                    A execução automática usa o scheduler do servidor e registra
+                    o resultado em Auditoria de Automação.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-2xl border-white/30 text-white hover:bg-white/10"
+                    onClick={handleTenableSync}
+                    disabled={!isAdmin || tenableSyncing}
+                  >
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    {tenableSyncing ? "Executando..." : "Executar agora"}
+                  </Button>
+                  <div className="flex items-center gap-2 text-xs text-zinc-400">
+                    <Zap className="h-4 w-4 text-purple-300" />
+                    Registro automático no monitor de jobs.
+                  </div>
+                </div>
+                {tenableAutoError && (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                    {tenableAutoError}
+                  </div>
+                )}
+                {tenableSyncError && (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                    {tenableSyncError}
+                  </div>
+                )}
+                {tenableSyncMessage && (
+                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                    {tenableSyncMessage}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </section>
 
         <section className="rounded-3xl border border-white/10 bg-white/5 p-6 text-zinc-100 backdrop-blur">

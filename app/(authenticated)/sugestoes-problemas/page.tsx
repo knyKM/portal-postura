@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -89,11 +90,20 @@ export default function SugestoesProblemasPage() {
               >
                 <div className="flex flex-1 items-center justify-center">
                   <div className="text-center">
-                    <p className="text-xs uppercase tracking-[0.5em] text-zinc-400">
-                      Logo
-                    </p>
-                    <p className="mt-3 text-3xl font-semibold text-purple-200">
-                      JIRA
+                    <Image
+                      src="/assets/5968875.png"
+                      alt="Logo Jira"
+                      width={120}
+                      height={120}
+                      className="mx-auto h-24 w-24 opacity-90"
+                      style={{
+                        filter: isDark
+                          ? "grayscale(1) brightness(1.2) contrast(1.1)"
+                          : "grayscale(1) brightness(0.6) contrast(1.1)",
+                      }}
+                    />
+                    <p className="mt-3 text-2xl font-semibold text-purple-200">
+                      Jira
                     </p>
                   </div>
                 </div>
@@ -148,10 +158,19 @@ export default function SugestoesProblemasPage() {
               >
                 <div className="flex flex-1 items-center justify-center">
                   <div className="text-center">
-                    <p className="text-xs uppercase tracking-[0.5em] text-zinc-400">
-                      Logo
-                    </p>
-                    <p className="mt-3 text-3xl font-semibold text-cyan-200">
+                    <Image
+                      src="/assets/vivo-119.png"
+                      alt="Logo Vivo"
+                      width={120}
+                      height={120}
+                      className="mx-auto h-24 w-24 opacity-90"
+                      style={{
+                        filter: isDark
+                          ? "grayscale(1) brightness(1.2) contrast(1.1)"
+                          : "grayscale(1) brightness(0.6) contrast(1.1)",
+                      }}
+                    />
+                    <p className="mt-3 text-2xl font-semibold text-cyan-200">
                       Postura SM
                     </p>
                   </div>

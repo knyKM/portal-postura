@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   LogOut,
   ShieldCheck,
+  Shield,
   User,
   Settings2,
   MonitorSmartphone,
@@ -36,6 +37,14 @@ export default function ConfiguracoesPage() {
   const [loadingJiraToken, setLoadingJiraToken] = useState(true);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
+  const [tenableAccessKey, setTenableAccessKey] = useState("");
+  const [tenableSecretKey, setTenableSecretKey] = useState("");
+  const [loadingTenable, setLoadingTenable] = useState(true);
+  const [tenableMessage, setTenableMessage] = useState<string | null>(null);
+  const [tenableError, setTenableError] = useState<string | null>(null);
+  const [tenableSyncMessage, setTenableSyncMessage] = useState<string | null>(null);
+  const [tenableSyncError, setTenableSyncError] = useState<string | null>(null);
+  const [tenableSyncing, setTenableSyncing] = useState(false);
   const [jobsPaused, setJobsPaused] = useState(false);
   const [jobsMessage, setJobsMessage] = useState<string | null>(null);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -70,6 +79,7 @@ export default function ConfiguracoesPage() {
   useEffect(() => {
     if (!user) {
       setLoadingJiraToken(false);
+      setLoadingTenable(false);
       return;
     }
     setLoadingJiraToken(true);
@@ -91,6 +101,25 @@ export default function ConfiguracoesPage() {
         );
       })
       .finally(() => setLoadingJiraToken(false));
+
+    setLoadingTenable(true);
+    fetch("/api/integrations/tenable-token")
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (data?.error) {
+          throw new Error(data.error);
+        }
+        setTenableAccessKey(data?.accessKey ?? "");
+        setTenableSecretKey(data?.secretKey ?? "");
+      })
+      .catch((err) => {
+        setTenableError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar o token Tenable."
+        );
+      })
+      .finally(() => setLoadingTenable(false));
 
     fetch("/api/actions/jobs?settings=1")
       .then((res) => res.json().catch(() => null))
@@ -582,6 +611,190 @@ export default function ConfiguracoesPage() {
                   Salvar token
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+        {/* INTEGRAÇÃO TENABLE */}
+        <Card
+          className={cn(
+            "rounded-3xl border overflow-hidden",
+            isDark
+              ? "border-zinc-800 bg-[#050816]/80"
+              : "border-slate-200 bg-white"
+          )}
+        >
+            <CardHeader className="pb-3 border-b border-zinc-800/40">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/90 text-white">
+                    <Shield className="h-4 w-4" />
+                  </span>
+                  <div className="flex flex-col">
+                    <CardTitle className="text-sm font-semibold">
+                      Integração Tenable
+                    </CardTitle>
+                    <span className="text-[11px] text-zinc-500">
+                      Configure as chaves para sincronizar plugins e scans.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-zinc-400">
+              {tenableError && (
+                <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+                  {tenableError}
+                </div>
+              )}
+              {tenableMessage && (
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+                  {tenableMessage}
+                </div>
+              )}
+              {tenableSyncError && (
+                <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+                  {tenableSyncError}
+                </div>
+              )}
+              {tenableSyncMessage && (
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+                  {tenableSyncMessage}
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">
+                  Access Key
+                </label>
+                <Input
+                  value={tenableAccessKey}
+                  disabled={loadingTenable}
+                  onChange={(event) => setTenableAccessKey(event.target.value)}
+                  placeholder="Cole a access key da Tenable"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">
+                  Secret Key
+                </label>
+                <Input
+                  type="password"
+                  value={tenableSecretKey}
+                  disabled={loadingTenable}
+                  onChange={(event) => setTenableSecretKey(event.target.value)}
+                  placeholder="Cole a secret key da Tenable"
+                />
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                As chaves serão usadas para sincronizar plugins e scans do Tenable
+                Vulnerability Management.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  disabled={loadingTenable}
+                  onClick={async () => {
+                    try {
+                      setTenableError(null);
+                      setTenableMessage(null);
+                      const response = await fetch(
+                        "/api/integrations/tenable-token",
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            accessKey: tenableAccessKey,
+                            secretKey: tenableSecretKey,
+                          }),
+                        }
+                      );
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        throw new Error(data?.error || "Falha ao salvar token.");
+                      }
+                      setTenableMessage("Chaves salvas com sucesso.");
+                    } catch (err) {
+                      setTenableError(
+                        err instanceof Error
+                          ? err.message
+                          : "Não foi possível salvar as chaves."
+                      );
+                    }
+                  }}
+                  className="rounded-xl bg-cyan-600 text-white hover:bg-cyan-500"
+                >
+                  Salvar chaves
+                </Button>
+              </div>
+              {user?.role === "admin" && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={tenableSyncing}
+                    onClick={async () => {
+                      setTenableSyncing(true);
+                      setTenableSyncError(null);
+                      setTenableSyncMessage(null);
+                      try {
+                        const response = await fetch(
+                          "/api/integrations/tenable/sync-plugins",
+                          { method: "POST" }
+                        );
+                        const data = await response.json().catch(() => null);
+                        if (!response.ok) {
+                          throw new Error(data?.error || "Falha ao sincronizar plugins.");
+                        }
+                        setTenableSyncMessage(
+                          `Plugins sincronizados: ${data?.synced ?? 0}`
+                        );
+                      } catch (err) {
+                        setTenableSyncError(
+                          err instanceof Error
+                            ? err.message
+                            : "Não foi possível sincronizar plugins."
+                        );
+                      } finally {
+                        setTenableSyncing(false);
+                      }
+                    }}
+                  >
+                    Sincronizar plugins
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={tenableSyncing}
+                    onClick={async () => {
+                      setTenableSyncing(true);
+                      setTenableSyncError(null);
+                      setTenableSyncMessage(null);
+                      try {
+                        const response = await fetch(
+                          "/api/integrations/tenable/sync-scans",
+                          { method: "POST" }
+                        );
+                        const data = await response.json().catch(() => null);
+                        if (!response.ok) {
+                          throw new Error(data?.error || "Falha ao sincronizar scans.");
+                        }
+                        setTenableSyncMessage(
+                          `Scans sincronizados: ${data?.synced ?? 0}`
+                        );
+                      } catch (err) {
+                        setTenableSyncError(
+                          err instanceof Error
+                            ? err.message
+                            : "Não foi possível sincronizar scans."
+                        );
+                      } finally {
+                        setTenableSyncing(false);
+                      }
+                    }}
+                  >
+                    Sincronizar scans
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 

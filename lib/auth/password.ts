@@ -1,12 +1,17 @@
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
+
+const BCRYPT_ROUNDS = 10;
 
 export function hashPassword(password: string) {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
+  return bcrypt.hashSync(password, BCRYPT_ROUNDS);
 }
 
 export function verifyPassword(password: string, storedHash: string) {
+  if (storedHash.startsWith("$2")) {
+    return bcrypt.compareSync(password, storedHash);
+  }
+
   const [salt, hash] = storedHash.split(":");
   if (!salt || !hash) {
     return false;

@@ -17,6 +17,8 @@ export type UserRecord = {
   jira_url: string | null;
   jira_token: string | null;
   jira_verify_ssl: string | null;
+  tenable_access_key: string | null;
+  tenable_secret_key: string | null;
   created_at: string;
 };
 
@@ -65,7 +67,7 @@ function seedAdmin() {
 export function findUserByEmail(email: string): UserRecord | undefined {
   seedAdmin();
   const stmt = db.prepare(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE email = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, tenable_access_key, tenable_secret_key, created_at FROM users WHERE email = ?"
   );
   return stmt.get(email);
 }
@@ -126,7 +128,7 @@ export function createUser({
   const insertedId = Number(result.lastInsertRowid);
 
   const fetchNew = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, tenable_access_key, tenable_secret_key, created_at FROM users WHERE id = ?"
   );
   const created = fetchNew.get(insertedId);
 
@@ -185,7 +187,7 @@ export function updateUserActiveStatus(
   }
 
   const fetch = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, tenable_access_key, tenable_secret_key, created_at FROM users WHERE id = ?"
   );
   return fetch.get(userId) ?? null;
 }
@@ -203,7 +205,7 @@ export function updateUserSecurityLevel(
     return null;
   }
   const fetch = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, tenable_access_key, tenable_secret_key, created_at FROM users WHERE id = ?"
   );
   return fetch.get(userId) ?? null;
 }
@@ -216,7 +218,7 @@ export function updateUserRole(userId: number, role: string): UserRecord | null 
     return null;
   }
   const fetch = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, tenable_access_key, tenable_secret_key, created_at FROM users WHERE id = ?"
   );
   return fetch.get(userId) ?? null;
 }
@@ -249,6 +251,35 @@ export function updateUserJiraSettings(
   return getUserJiraSettings(userId);
 }
 
+export function getUserTenableSettings(userId: number) {
+  seedAdmin();
+  return db
+    .prepare<{
+      tenable_access_key: string | null;
+      tenable_secret_key: string | null;
+    }>("SELECT tenable_access_key, tenable_secret_key FROM users WHERE id = ?")
+    .get(userId);
+}
+
+export function updateUserTenableSettings(
+  userId: number,
+  {
+    accessKey,
+    secretKey,
+  }: { accessKey: string | null; secretKey: string | null }
+) {
+  seedAdmin();
+  const update = db.prepare(
+    "UPDATE users SET tenable_access_key = ?, tenable_secret_key = ? WHERE id = ?"
+  );
+  update.run(accessKey, secretKey, userId);
+  return db
+    .prepare<UserRecord>(
+      "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, tenable_access_key, tenable_secret_key, created_at FROM users WHERE id = ?"
+    )
+    .get(userId);
+}
+
 export function deleteUser(userId: number): boolean {
   seedAdmin();
   const stmt = db.prepare("DELETE FROM users WHERE id = ?");
@@ -268,7 +299,7 @@ export function countUsersBySecurityLevel(securityLevel: string) {
 export function findUserById(id: number): UserRecord | undefined {
   seedAdmin();
   const stmt = db.prepare<UserRecord>(
-    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, created_at FROM users WHERE id = ?"
+    "SELECT id, email, name, avatar, password_hash, role, security_level, is_active, mfa_secret, mfa_enabled, last_seen_at, jira_url, jira_token, jira_verify_ssl, tenable_access_key, tenable_secret_key, created_at FROM users WHERE id = ?"
   );
   return stmt.get(id);
 }

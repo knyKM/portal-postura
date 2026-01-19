@@ -123,6 +123,55 @@ export async function listAutomationSnapshot(limitLogs = 20) {
   };
 }
 
+export async function getAutomationJobById(id: string) {
+  const row = db
+    .prepare<AutomationJobRow>("SELECT * FROM automation_jobs WHERE id = ?")
+    .get(id);
+  return row ? mapRowToJob(row) : null;
+}
+
+type EnsureAutomationJobInput = {
+  id: string;
+  name: string;
+  owner: string;
+  description?: string;
+  queueSeconds?: number;
+  pendingIssues?: number;
+};
+
+export async function ensureAutomationJob(input: EnsureAutomationJobInput) {
+  const existing = await getAutomationJobById(input.id);
+  if (existing) return existing;
+
+  const now = getLocalTimestamp();
+  db.prepare(
+    `INSERT INTO automation_jobs
+      (id, name, description, owner, queue_seconds, pending_issues, duration_seconds, last_run, status_code, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 3, ?, ?)`
+  ).run(
+    input.id,
+    input.name,
+    input.description ?? null,
+    input.owner,
+    input.queueSeconds ?? 0,
+    input.pendingIssues ?? 0,
+    now,
+    now
+  );
+
+  return mapRowToJob({
+    id: input.id,
+    name: input.name,
+    description: input.description ?? null,
+    owner: input.owner,
+    queue_seconds: input.queueSeconds ?? 0,
+    pending_issues: input.pendingIssues ?? 0,
+    duration_seconds: 0,
+    last_run: null,
+    status_code: 3,
+  });
+}
+
 type CreateAutomationJobInput = {
   name: string;
   owner: string;
