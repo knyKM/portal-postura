@@ -11,6 +11,8 @@ export type JiraExportJobRecord = {
   file_name: string | null;
   error_message: string | null;
   expires_at: string | null;
+  total_issues: number | null;
+  processed_issues: number | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -28,9 +30,9 @@ export function createJiraExportJob(input: JiraExportJobPayload) {
   const record = db
     .prepare<JiraExportJobRecord>(
       `INSERT INTO jira_export_jobs
-        (requester_id, jql, fields_json, status, created_at)
+       (requester_id, jql, fields_json, status, created_at)
        VALUES (?, ?, ?, 'queued', ?)
-       RETURNING id, requester_id, jql, fields_json, status, file_path, file_name, error_message, expires_at, created_at, started_at, finished_at`
+       RETURNING id, requester_id, jql, fields_json, status, file_path, file_name, error_message, expires_at, total_issues, processed_issues, created_at, started_at, finished_at`
     )
     .get(input.requesterId, input.jql, fieldsJson, now);
   return record;
@@ -40,7 +42,7 @@ export function listJiraExportJobsByUser(userId: number) {
   return db
     .prepare<JiraExportJobRecord>(
       `SELECT id, requester_id, jql, fields_json, status, file_path, file_name, error_message,
-              expires_at, created_at, started_at, finished_at
+              expires_at, total_issues, processed_issues, created_at, started_at, finished_at
        FROM jira_export_jobs
        WHERE requester_id = ?
        ORDER BY created_at DESC`
@@ -52,7 +54,7 @@ export function getJiraExportJobById(id: number) {
   return db
     .prepare<JiraExportJobRecord>(
       `SELECT id, requester_id, jql, fields_json, status, file_path, file_name, error_message,
-              expires_at, created_at, started_at, finished_at
+              expires_at, total_issues, processed_issues, created_at, started_at, finished_at
        FROM jira_export_jobs
        WHERE id = ?`
     )
@@ -99,5 +101,23 @@ export function updateJiraExportJobStatus({
     id
   );
 
+  return getJiraExportJobById(id);
+}
+
+export function updateJiraExportJobProgress({
+  id,
+  totalIssues,
+  processedIssues,
+}: {
+  id: number;
+  totalIssues?: number | null;
+  processedIssues?: number | null;
+}) {
+  db.prepare(
+    `UPDATE jira_export_jobs
+     SET total_issues = COALESCE(?, total_issues),
+         processed_issues = COALESCE(?, processed_issues)
+     WHERE id = ?`
+  ).run(totalIssues ?? null, processedIssues ?? null, id);
   return getJiraExportJobById(id);
 }

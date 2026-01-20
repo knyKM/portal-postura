@@ -7,6 +7,7 @@ import { getLocalTimestamp } from "@/lib/utils/time";
 import {
   getJiraExportJobById,
   updateJiraExportJobStatus,
+  updateJiraExportJobProgress,
 } from "@/lib/jira-export/export-service";
 import { getUserContactById, getUserJiraSettings } from "@/lib/auth/user-service";
 import { sendEmail } from "@/lib/notifications/email-service";
@@ -120,7 +121,7 @@ async function fetchIssuesByJql(
       break;
     }
   }
-  return issues;
+  return { issues, total: total ?? issues.length };
 }
 
 function formatFieldValue(value: unknown): string {
@@ -191,7 +192,7 @@ export async function runJiraExportJob(jobId: number) {
 
   try {
     const fieldsForJira = fields.filter((field) => field !== "key");
-    const issues = await fetchIssuesByJql(config, job.jql, fieldsForJira);
+    const { issues, total } = await fetchIssuesByJql(config, job.jql, fieldsForJira);
     const fieldCatalog = jiraFieldsJson as JiraField[];
     const labelById = new Map(
       fieldCatalog.map((field) => [field.id, field.name])
@@ -200,12 +201,28 @@ export async function runJiraExportJob(jobId: number) {
 
     const headers = fields.map((field) => labelById.get(field) ?? field);
     const rows: string[][] = [headers];
-    issues.forEach((issue) => {
+    updateJiraExportJobProgress({
+      id: jobId,
+      totalIssues: total ?? issues.length,
+      processedIssues: 0,
+    });
+
+    issues.forEach((issue, index) => {
       const row = fields.map((field) => {
         if (field === "key") return issue.key;
         return formatFieldValue(issue.fields?.[field]);
       });
       rows.push(row);
+      if (index % 25 === 0) {
+        updateJiraExportJobProgress({
+          id: jobId,
+          processedIssues: index + 1,
+        });
+      }
+    });
+    updateJiraExportJobProgress({
+      id: jobId,
+      processedIssues: issues.length,
     });
 
     const sheet = XLSX.utils.aoa_to_sheet(rows);

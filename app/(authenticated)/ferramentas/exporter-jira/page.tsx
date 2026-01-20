@@ -28,6 +28,8 @@ type ExportJob = {
   file_name: string | null;
   error_message: string | null;
   expires_at: string | null;
+  total_issues: number | null;
+  processed_issues: number | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -44,6 +46,29 @@ function getExpirationLabel(expiresAt: string | null) {
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
   if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function getProgressPercent(job: ExportJob) {
+  if (!job.total_issues || !job.processed_issues) return 0;
+  return Math.min(100, Math.round((job.processed_issues / job.total_issues) * 100));
+}
+
+function getEtaLabel(job: ExportJob) {
+  if (!job.started_at || !job.processed_issues || !job.total_issues) return "—";
+  if (job.processed_issues <= 0) return "—";
+  const start = new Date(job.started_at);
+  if (Number.isNaN(start.getTime())) return "—";
+  const elapsedMs = Date.now() - start.getTime();
+  if (elapsedMs <= 0) return "—";
+  const rateMsPerIssue = elapsedMs / job.processed_issues;
+  const remainingIssues = Math.max(0, job.total_issues - job.processed_issues);
+  const remainingMs = remainingIssues * rateMsPerIssue;
+  if (remainingMs <= 0) return "—";
+  const totalMinutes = Math.ceil(remainingMs / 60000);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
@@ -104,6 +129,14 @@ export default function ExporterJiraPage() {
     if (!loading) {
       fetchJobs();
     }
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    const interval = window.setInterval(() => {
+      fetchJobs();
+    }, 5000);
+    return () => window.clearInterval(interval);
   }, [loading]);
 
   const filteredFields = useMemo(() => {
@@ -350,7 +383,7 @@ export default function ExporterJiraPage() {
                         : "border-slate-200 bg-slate-50 text-slate-700"
                     )}
                   >
-                    <div>
+                    <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">#{job.id}</span>
                         <Badge
@@ -376,6 +409,23 @@ export default function ExporterJiraPage() {
                           {job.error_message}
                         </p>
                       )}
+                      {job.status !== "completed" && job.status !== "failed" ? (
+                        <div className="mt-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
+                            <span>
+                              {job.processed_issues ?? 0}/{job.total_issues ?? 0} issues
+                            </span>
+                            <span>ETA: {getEtaLabel(job)}</span>
+                            <span>{getProgressPercent(job)}%</span>
+                          </div>
+                          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500"
+                              style={{ width: `${getProgressPercent(job)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       {job.status === "completed" ? (

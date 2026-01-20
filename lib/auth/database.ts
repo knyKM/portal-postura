@@ -602,6 +602,8 @@ db.exec(`
     file_name TEXT,
     error_message TEXT,
     expires_at TEXT,
+    total_issues INTEGER,
+    processed_issues INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     started_at TEXT,
     finished_at TEXT,
@@ -615,8 +617,20 @@ const jiraExportTableInfo = db
 const hasJiraExportExpiresAt = jiraExportTableInfo.some(
   (column) => column.name === "expires_at"
 );
+const hasJiraExportTotalIssues = jiraExportTableInfo.some(
+  (column) => column.name === "total_issues"
+);
+const hasJiraExportProcessedIssues = jiraExportTableInfo.some(
+  (column) => column.name === "processed_issues"
+);
 if (!hasJiraExportExpiresAt) {
   db.exec("ALTER TABLE jira_export_jobs ADD COLUMN expires_at TEXT");
+}
+if (!hasJiraExportTotalIssues) {
+  db.exec("ALTER TABLE jira_export_jobs ADD COLUMN total_issues INTEGER");
+}
+if (!hasJiraExportProcessedIssues) {
+  db.exec("ALTER TABLE jira_export_jobs ADD COLUMN processed_issues INTEGER");
 }
 
 db.exec(`
