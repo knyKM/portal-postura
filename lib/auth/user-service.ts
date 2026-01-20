@@ -172,6 +172,14 @@ export function listUsers(): UserSummary[] {
   return stmt.all();
 }
 
+export function getUserContactById(userId: number) {
+  seedAdmin();
+  const stmt = db.prepare<{ id: number; name: string; email: string }>(
+    "SELECT id, name, email FROM users WHERE id = ?"
+  );
+  return stmt.get(userId) ?? null;
+}
+
 export function updateUserActiveStatus(
   userId: number,
   isActive: boolean

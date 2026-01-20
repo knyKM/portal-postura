@@ -20,6 +20,34 @@ type JiraField = {
   clauseNames?: string[];
 };
 
+type ExportJob = {
+  id: number;
+  jql: string;
+  fields_json: string;
+  status: "queued" | "running" | "completed" | "failed";
+  file_name: string | null;
+  error_message: string | null;
+  expires_at: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+function getExpirationLabel(expiresAt: string | null) {
+  if (!expiresAt) return null;
+  const expires = new Date(expiresAt);
+  if (Number.isNaN(expires.getTime())) return null;
+  const diffMs = expires.getTime() - Date.now();
+  if (diffMs <= 0) return "Expirado";
+  const totalMinutes = Math.ceil(diffMs / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 const baseFieldCatalog = jiraFieldsJson as JiraField[];
 const fieldCatalog: JiraField[] = [
   { id: "key", name: "Issue Key", custom: false },
@@ -37,6 +65,8 @@ export default function ExporterJiraPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<ExportJob[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -53,6 +83,28 @@ export default function ExporterJiraPage() {
       setLoading(false);
     }
   }, [router]);
+
+  async function fetchJobs() {
+    setJobsLoading(true);
+    try {
+      const response = await fetch("/api/jira-export/jobs");
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível carregar as exportações.");
+      }
+      setJobs(data?.jobs ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar exportações.");
+    } finally {
+      setJobsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!loading) {
+      fetchJobs();
+    }
+  }, [loading]);
 
   const filteredFields = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -96,20 +148,12 @@ export default function ExporterJiraPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jql, fields: selectedFields }),
       });
+      const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        const payload = await response.json().catch(() => null);
         throw new Error(payload?.error || "Falha ao exportar.");
       }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `jira-export-${Date.now()}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      setMessage("Exportação concluída.");
+      setMessage("Solicitação enviada. A exportação está sendo processada.");
+      await fetchJobs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao exportar.");
     } finally {
@@ -271,6 +315,92 @@ export default function ExporterJiraPage() {
                   })}
                 </div>
               </ScrollArea>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card
+            className={cn(
+              "border",
+              isDark
+                ? "border-white/10 bg-[#050816] text-zinc-100"
+                : "border-slate-200 bg-white text-slate-800"
+            )}
+          >
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Minhas exportações</CardTitle>
+              <Button type="button" variant="secondary" onClick={fetchJobs}>
+                Atualizar
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {jobsLoading ? (
+                <p className="text-zinc-400">Carregando exportações...</p>
+              ) : jobs.length === 0 ? (
+                <p className="text-zinc-400">Nenhuma exportação solicitada.</p>
+              ) : (
+                jobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className={cn(
+                      "flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+                      isDark
+                        ? "border-white/10 bg-black/20 text-zinc-200"
+                        : "border-slate-200 bg-slate-50 text-slate-700"
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">#{job.id}</span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "border-white/10 text-[11px]",
+                            isDark ? "text-zinc-300" : "text-slate-600"
+                          )}
+                        >
+                          {job.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-zinc-500">
+                        {new Date(job.created_at).toLocaleString("pt-BR")}
+                      </p>
+                      {job.expires_at && job.status === "completed" && (
+                        <p className="mt-1 text-xs text-zinc-500">
+                          Expira em {getExpirationLabel(job.expires_at)}
+                        </p>
+                      )}
+                      {job.error_message && (
+                        <p className="mt-1 text-xs text-rose-300">
+                          {job.error_message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {job.status === "completed" ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            window.location.href = `/api/jira-export/jobs/${job.id}/download`;
+                          }}
+                        >
+                          Baixar XLSX
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-zinc-500">
+                          {job.status === "running"
+                            ? "Processando..."
+                            : job.status === "queued"
+                            ? "Na fila"
+                            : "Erro"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </section>

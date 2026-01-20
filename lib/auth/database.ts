@@ -592,6 +592,39 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS jira_export_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requester_id INTEGER NOT NULL,
+    jql TEXT NOT NULL,
+    fields_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    file_path TEXT,
+    file_name TEXT,
+    error_message TEXT,
+    expires_at TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    started_at TEXT,
+    finished_at TEXT,
+    FOREIGN KEY(requester_id) REFERENCES users(id)
+  );
+`);
+
+const jiraExportTableInfo = db
+  .prepare("PRAGMA table_info(jira_export_jobs)")
+  .all() as TableInfoRow[];
+const hasJiraExportExpiresAt = jiraExportTableInfo.some(
+  (column) => column.name === "expires_at"
+);
+if (!hasJiraExportExpiresAt) {
+  db.exec("ALTER TABLE jira_export_jobs ADD COLUMN expires_at TEXT");
+}
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_jira_export_jobs_requester
+  ON jira_export_jobs (requester_id, status, created_at);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

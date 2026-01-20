@@ -63,6 +63,7 @@ const securityRouteOptions = [
   { label: "Ferramentas", value: "/ferramentas" },
   { label: "Gestão de Contratos", value: "/ferramentas/gestao-contratos" },
   { label: "Exporter Jira", value: "/ferramentas/exporter-jira" },
+  { label: "Validador de Status", value: "/ferramentas/validador-status" },
   { label: "Auditoria", value: "/auditoria" },
   { label: "Sugestões/Problemas", value: "/sugestoes-problemas" },
   { label: "Sugestões Postura SM", value: "/sugestoes" },
