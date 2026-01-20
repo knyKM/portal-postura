@@ -6,6 +6,8 @@ import {
   listUsers,
 } from "@/lib/auth/user-service";
 import { getSecurityLevelByKey } from "@/lib/security/security-level-service";
+import { createPasswordResetToken } from "@/lib/auth/password-reset-service";
+import { getLocalTimestamp } from "@/lib/utils/time";
 
 const ALLOWED_ROLES = ["admin", "analista", "leitor"] as const;
 
@@ -85,12 +87,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!password || password.length < 8) {
-    return NextResponse.json(
-      { error: "A senha deve ter pelo menos 8 caracteres." },
-      { status: 400 }
-    );
-  }
+  const usePassword =
+    typeof password === "string" && password.trim().length >= 8
+      ? password.trim()
+      : `Temp#${Math.random().toString(36).slice(2, 12)}!`;
 
   if (!ALLOWED_ROLES.includes(role as (typeof ALLOWED_ROLES)[number])) {
     return NextResponse.json(
@@ -119,10 +119,16 @@ export async function POST(request: Request) {
     const user = createUser({
       name,
       email,
-      password,
+      password: usePassword,
       role,
       securityLevel,
     });
+    const expiresAt = getLocalTimestamp(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    const token = createPasswordResetToken(user.id, expiresAt);
+    const baseUrl = process.env.APP_BASE_URL?.replace(/\/+$/, "");
+    const resetLink = baseUrl
+      ? `${baseUrl}/setup-senha?token=${token}`
+      : `/setup-senha?token=${token}`;
 
     return NextResponse.json(
       {
@@ -135,6 +141,8 @@ export async function POST(request: Request) {
           is_active: Boolean(user.is_active),
           created_at: user.created_at,
         },
+        resetLink,
+        resetExpiresAt: expiresAt,
       },
       { status: 201 }
     );

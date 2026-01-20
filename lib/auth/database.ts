@@ -639,6 +639,22 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user
+  ON password_reset_tokens (user_id, expires_at);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

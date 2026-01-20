@@ -4,9 +4,9 @@ import { updateUserActiveStatus } from "@/lib/auth/user-service";
 
 type RouteContext =
   | {
-      params?: {
+      params?: Promise<{
         id?: string;
-      };
+      }>;
     }
   | undefined;
 
@@ -14,8 +14,11 @@ type UpdateStatusRequest = {
   active?: boolean;
 };
 
-function resolveUserId(request: Request, context?: RouteContext): number {
-  const paramId = context?.params?.id;
+async function resolveUserId(
+  request: Request,
+  context?: RouteContext
+): Promise<number> {
+  const paramId = context?.params ? (await context.params)?.id : undefined;
   if (paramId) {
     return Number(paramId);
   }
@@ -44,7 +47,7 @@ export async function PATCH(request: Request, context?: RouteContext) {
     );
   }
 
-  const userId = resolveUserId(request, context);
+  const userId = await resolveUserId(request, context);
 
   if (Number.isNaN(userId) || userId <= 0) {
     return NextResponse.json({ error: "Usuário inválido." }, { status: 400 });

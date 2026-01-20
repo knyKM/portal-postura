@@ -38,6 +38,7 @@ type ActionFormProps = {
   statusValue: string;
   assigneeFields: Array<{ id: string; label: string; value: string }>;
   comment: string;
+  commentAttachment: { name: string; type: string; data: string } | null;
   fields: Array<{ key: string; value: string }>;
   issuesCount: number | null;
   isCheckingCount: boolean;
@@ -50,6 +51,9 @@ type ActionFormProps = {
   onStatusChange: (value: string) => void;
   onAssigneeFieldChange: (id: string, value: string) => void;
   onCommentChange: (value: string) => void;
+  onCommentAttachmentChange: (
+    attachment: { name: string; type: string; data: string } | null
+  ) => void;
   onFieldKeyChange: (index: number, value: string) => void;
   onFieldValueChange: (index: number, value: string) => void;
   onAddField: () => void;
@@ -95,6 +99,7 @@ export function ActionForm(props: ActionFormProps) {
     statusValue,
     assigneeFields,
     comment,
+    commentAttachment,
     fields,
     issuesCount,
     isCheckingCount,
@@ -107,6 +112,7 @@ export function ActionForm(props: ActionFormProps) {
     onStatusChange,
     onAssigneeFieldChange,
     onCommentChange,
+    onCommentAttachmentChange,
     onFieldKeyChange,
     onFieldValueChange,
     onAddField,
@@ -145,6 +151,7 @@ export function ActionForm(props: ActionFormProps) {
   const idsFileInputRef = useRef<HTMLInputElement | null>(null);
   const bulkFileInputRef = useRef<HTMLInputElement | null>(null);
   const catalogFileInputRef = useRef<HTMLInputElement | null>(null);
+  const commentFileInputRef = useRef<HTMLInputElement | null>(null);
   const fieldSuggestionsId = "jira-field-suggestions";
   const shouldShowFieldSuggestions = selectedAction === "fields" || isEscalate;
   const assigneeBulkLabels = useMemo(
@@ -337,6 +344,29 @@ export function ActionForm(props: ActionFormProps) {
       }
     };
     reader.readAsText(file);
+  }
+
+  function handleCommentFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const base64 = result.includes(",") ? result.split(",")[1] : "";
+      if (!base64) {
+        onCommentAttachmentChange(null);
+      } else {
+        onCommentAttachmentChange({
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          data: base64,
+        });
+      }
+      if (commentFileInputRef.current) {
+        commentFileInputRef.current.value = "";
+      }
+    };
+    reader.readAsDataURL(file);
   }
 
   function handleCopyFieldId(fieldId: string) {
@@ -656,6 +686,57 @@ export function ActionForm(props: ActionFormProps) {
                 value={comment}
                 onChange={(event) => onCommentChange(event.target.value)}
               />
+            </FieldBlock>
+            <FieldBlock label="Anexo (opcional)" labelClassName={labelColor}>
+              <div
+                className={cn(
+                  "rounded-2xl border border-dashed p-4 text-center",
+                  isDark
+                    ? "border-white/15 bg-white/5"
+                    : "border-slate-200 bg-slate-50"
+                )}
+              >
+                <label
+                  className={cn(
+                    "flex cursor-pointer flex-col items-center gap-2 text-xs font-semibold",
+                    isDark ? "text-zinc-200" : "text-slate-700"
+                  )}
+                >
+                  <span className="rounded-full border border-white/20 px-3 py-1">
+                    Selecionar arquivo
+                  </span>
+                  <span className={cn("text-[11px]", subtleText)}>
+                    O arquivo será anexado em todas as issues selecionadas.
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    ref={commentFileInputRef}
+                    onChange={handleCommentFileChange}
+                  />
+                </label>
+              </div>
+              {commentAttachment && (
+                <div
+                  className={cn(
+                    "mt-2 rounded-xl border px-3 py-2 text-[11px]",
+                    isDark
+                      ? "border-white/10 bg-black/20 text-zinc-200"
+                      : "border-slate-200 bg-white text-slate-700"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Arquivo: {commentAttachment.name}</span>
+                    <button
+                      type="button"
+                      className="text-[11px] text-rose-300"
+                      onClick={() => onCommentAttachmentChange(null)}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              )}
             </FieldBlock>
             <p className={cn("text-[11px]", subtleText)}>
               Comentários serão gravados com a credencial técnica e marcados como automação.

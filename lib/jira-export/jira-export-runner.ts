@@ -124,7 +124,7 @@ async function fetchIssuesByJql(
   return { issues, total: total ?? issues.length };
 }
 
-function formatFieldValue(value: unknown): string {
+function formatFieldValue(value: unknown, forceNumber = false): string | number {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") {
@@ -200,6 +200,12 @@ export async function runJiraExportJob(jobId: number) {
     labelById.set("key", "Issue Key");
 
     const headers = fields.map((field) => labelById.get(field) ?? field);
+    const numericFields = new Set(
+      fields.filter((field) => {
+        const label = labelById.get(field) ?? field;
+        return label.toLowerCase().startsWith("total");
+      })
+    );
     const rows: string[][] = [headers];
     updateJiraExportJobProgress({
       id: jobId,
@@ -210,7 +216,16 @@ export async function runJiraExportJob(jobId: number) {
     issues.forEach((issue, index) => {
       const row = fields.map((field) => {
         if (field === "key") return issue.key;
-        return formatFieldValue(issue.fields?.[field]);
+        const rawValue = issue.fields?.[field];
+        if (numericFields.has(field)) {
+          if (typeof rawValue === "number") return rawValue;
+          if (typeof rawValue === "string") {
+            const normalized = rawValue.replace(/\./g, "").replace(",", ".");
+            const parsed = Number(normalized);
+            return Number.isFinite(parsed) ? parsed : formatFieldValue(rawValue);
+          }
+        }
+        return formatFieldValue(rawValue);
       });
       rows.push(row);
       if (index % 25 === 0) {

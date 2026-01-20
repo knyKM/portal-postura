@@ -109,6 +109,7 @@ type UserActionRequest = {
     assigneeCsvData?: string;
     assigneeCsvFileName?: string;
     comment?: string;
+    commentAttachment?: { name: string; type: string; data: string };
     fields?: Array<{ key: string; value: string }>;
     projectKey?: string;
     csvData?: string;
@@ -143,6 +144,11 @@ export default function AcoesPage() {
   const [assigneeBulkCsvData, setAssigneeBulkCsvData] = useState<string | null>(null);
   const [assigneeBulkFileName, setAssigneeBulkFileName] = useState<string | null>(null);
   const [comment, setComment] = useState("");
+  const [commentAttachment, setCommentAttachment] = useState<{
+    name: string;
+    type: string;
+    data: string;
+  } | null>(null);
   const [fields, setFields] = useState<Array<{ key: string; value: string }>>([
     { key: "", value: "" },
   ]);
@@ -173,6 +179,11 @@ export default function AcoesPage() {
   const [editAssigneeBulkCsvData, setEditAssigneeBulkCsvData] = useState<string | null>(null);
   const [editAssigneeBulkFileName, setEditAssigneeBulkFileName] = useState<string | null>(null);
   const [editComment, setEditComment] = useState("");
+  const [editCommentAttachment, setEditCommentAttachment] = useState<{
+    name: string;
+    type: string;
+    data: string;
+  } | null>(null);
   const [editFields, setEditFields] = useState<Array<{ key: string; value: string }>>([
     { key: "", value: "" },
   ]);
@@ -381,6 +392,7 @@ export default function AcoesPage() {
     statusValueValue,
     assigneeFieldsValue,
     commentValue,
+    commentAttachmentValue,
     fieldsValue,
     projectValue,
     idsFileNameValue,
@@ -394,6 +406,7 @@ export default function AcoesPage() {
     statusValueValue: string;
     assigneeFieldsValue: Array<{ id: string; label: string; value: string }>;
     commentValue: string;
+    commentAttachmentValue: { name: string; type: string; data: string } | null;
     fieldsValue: Array<{ key: string; value: string }>;
     projectValue: string;
     idsFileNameValue: string | null;
@@ -526,6 +539,10 @@ export default function AcoesPage() {
         assigneeCsvData: isAssigneeBulk ? assigneeCsvDataValue?.trim() : undefined,
         assigneeCsvFileName: isAssigneeBulk ? assigneeCsvFileNameValue ?? undefined : undefined,
         comment: actionType === "comment" ? commentValue.trim() : undefined,
+        commentAttachment:
+          actionType === "comment" && commentAttachmentValue
+            ? commentAttachmentValue
+            : undefined,
         fields: actionType === "fields" || isEscalate ? cleanedFields : undefined,
         projectKey: isEscalate ? projectValue : undefined,
         csvData: isEscalate ? filterValueValue.trim() || undefined : undefined,
@@ -554,12 +571,14 @@ export default function AcoesPage() {
       setAssigneeBulkCsvData(null);
       setAssigneeBulkFileName(null);
       setComment("");
+      setCommentAttachment(null);
       setFields([{ key: "", value: "" }]);
       setIdsFileName(null);
       setEditingRequestId(null);
       setIsEditModalOpen(false);
       setEditAssigneeBulkCsvData(null);
       setEditAssigneeBulkFileName(null);
+      setEditCommentAttachment(null);
       triggerRequestsRefresh();
     } catch (err) {
       setError(
@@ -580,6 +599,7 @@ export default function AcoesPage() {
       statusValueValue: statusValue,
       assigneeFieldsValue: assigneeFields,
       commentValue: comment,
+      commentAttachmentValue: commentAttachment,
       fieldsValue: fields,
       projectValue: projectKey,
       idsFileNameValue: idsFileName,
@@ -599,6 +619,7 @@ export default function AcoesPage() {
       statusValueValue: editStatusValue,
       assigneeFieldsValue: editAssigneeFields,
       commentValue: editComment,
+      commentAttachmentValue: editCommentAttachment,
       fieldsValue: editFields,
       projectValue: editProjectKey,
       idsFileNameValue: editIdsFileName,
@@ -968,6 +989,7 @@ export default function AcoesPage() {
                   statusValue={editStatusValue}
                   assigneeFields={editAssigneeFields}
                   comment={editComment}
+                  commentAttachment={editCommentAttachment}
                   fields={editFields}
                   issuesCount={editIssuesCount}
                   isCheckingCount={editIsCheckingCount}
@@ -1004,6 +1026,9 @@ export default function AcoesPage() {
                     )
                   }
                   onCommentChange={(value) => setEditComment(value)}
+                  onCommentAttachmentChange={(attachment) =>
+                    setEditCommentAttachment(attachment)
+                  }
                   onFieldKeyChange={(index, value) =>
                     setEditFields((prev) =>
                       prev.map((field, fieldIndex) =>
@@ -1178,6 +1203,7 @@ export default function AcoesPage() {
           statusValue={statusValue}
           assigneeFields={assigneeFields}
           comment={comment}
+          commentAttachment={commentAttachment}
           fields={fields}
           issuesCount={issuesCount}
           isCheckingCount={isCheckingCount}
@@ -1203,6 +1229,10 @@ export default function AcoesPage() {
             )
           }
           onCommentChange={(value) => setComment(value)}
+          onCommentAttachmentChange={(attachment) =>
+            setCommentAttachment(attachment)
+          }
+          onCommentAttachmentChange={(attachment) => setCommentAttachment(attachment)}
           onFieldKeyChange={(index, value) =>
             setFields((prev) =>
               prev.map((field, fieldIndex) =>
@@ -1399,6 +1429,9 @@ export default function AcoesPage() {
                                   })
                                 );
                                 setEditComment(request.payload?.comment ?? "");
+                                setEditCommentAttachment(
+                                  request.payload?.commentAttachment ?? null
+                                );
                                 setEditFields(
                                   request.payload?.fields?.length
                                     ? request.payload.fields

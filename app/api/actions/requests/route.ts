@@ -30,6 +30,7 @@ type ActionRequestPayload = {
   assigneeCsvData?: string;
   assigneeCsvFileName?: string;
   comment?: string;
+  commentAttachment?: { name?: string; type?: string; data?: string };
   fields?: Array<{ key: string; value: string }>;
   projectKey?: string;
   csvData?: string;
@@ -597,7 +598,19 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    payload = { comment };
+    const attachment = body?.commentAttachment;
+    if (attachment?.data && attachment?.name) {
+      payload = {
+        comment,
+        commentAttachment: {
+          name: attachment.name,
+          type: attachment.type ?? "application/octet-stream",
+          data: attachment.data,
+        },
+      };
+    } else {
+      payload = { comment };
+    }
   } else if (actionType === "fields") {
     const fields = (body?.fields ?? []).map((field) => ({
       key: field?.key?.trim() ?? "",

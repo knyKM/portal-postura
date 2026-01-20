@@ -96,6 +96,8 @@ export default function UsuariosPage() {
   const [error, setError] = useState<string | null>(null);
   const [createdUser, setCreatedUser] = useState<CreatedUser | null>(null);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [resetLink, setResetLink] = useState<string | null>(null);
+  const [resetExpiresAt, setResetExpiresAt] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
@@ -274,9 +276,9 @@ export default function UsuariosPage() {
       };
 
       setCreatedUser(normalizedUser);
-      if (!generatedPassword) {
-        setGeneratedPassword(password);
-      }
+      setResetLink(data?.resetLink ?? null);
+      setResetExpiresAt(data?.resetExpiresAt ?? null);
+      setGeneratedPassword(null);
       setName("");
       setEmail("");
       setPassword("");
@@ -286,6 +288,8 @@ export default function UsuariosPage() {
     } catch (err) {
       setCreatedUser(null);
       setGeneratedPassword(null);
+      setResetLink(null);
+      setResetExpiresAt(null);
       setError(
         err instanceof Error ? err.message : "Não foi possível registrar o usuário."
       );
@@ -1009,7 +1013,7 @@ export default function UsuariosPage() {
                   Usuário criado com sucesso
                 </CardTitle>
                 <p className="text-xs text-emerald-200/70">
-                  Compartilhe a senha de forma segura.
+                  Compartilhe o link temporário com o usuário.
                 </p>
               </div>
             </CardHeader>
@@ -1049,12 +1053,46 @@ export default function UsuariosPage() {
                   {createdUser.is_active ? "Ativo" : "Inativo"}
                 </p>
               </div>
-              {generatedPassword && (
-                <div className="rounded-2xl border border-emerald-500/40 px-4 py-3">
+              {resetLink && (
+                <div className="rounded-2xl border border-emerald-500/40 px-4 py-3 md:col-span-2">
                   <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80">
-                    Senha atribuída
+                    Link temporário (24h)
                   </p>
-                  <p className="font-mono text-base">{generatedPassword}</p>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="break-all font-mono text-xs">{resetLink}</p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={async () => {
+                        if (!resetLink) return;
+                        if (
+                          typeof navigator !== "undefined" &&
+                          navigator.clipboard?.writeText
+                        ) {
+                          await navigator.clipboard.writeText(resetLink);
+                          return;
+                        }
+                        if (typeof document !== "undefined") {
+                          const fallback = document.createElement("textarea");
+                          fallback.value = resetLink;
+                          fallback.style.position = "fixed";
+                          fallback.style.left = "-9999px";
+                          document.body.appendChild(fallback);
+                          fallback.select();
+                          document.execCommand("copy");
+                          document.body.removeChild(fallback);
+                        }
+                      }}
+                    >
+                      Copiar link
+                    </Button>
+                  </div>
+                  {resetExpiresAt && (
+                    <p className="mt-1 text-[11px] text-emerald-200/70">
+                      Expira em {new Date(resetExpiresAt).toLocaleString("pt-BR")}
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -1177,7 +1215,7 @@ export default function UsuariosPage() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-zinc-400">
-                        Senha
+                        Senha (opcional)
                       </label>
                       <div className="flex gap-2">
                         <Input
@@ -1187,9 +1225,8 @@ export default function UsuariosPage() {
                             setPassword(event.target.value);
                             setGeneratedPassword(null);
                           }}
-                          placeholder="Clique em gerar ou informe manualmente"
+                          placeholder="Clique em gerar ou deixe em branco para link temporário"
                           disabled={accessDenied}
-                          required
                         />
                         <Button
                           type="button"
@@ -1202,7 +1239,8 @@ export default function UsuariosPage() {
                         </Button>
                       </div>
                       <p className="text-[11px] text-zinc-500">
-                        Mínimo de 8 caracteres. Senhas geradas têm 16 caracteres.
+                        Deixe em branco para gerar link temporário. Senhas geradas têm 16
+                        caracteres.
                       </p>
                     </div>
                     <div className="space-y-1">

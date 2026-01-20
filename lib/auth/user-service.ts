@@ -290,9 +290,15 @@ export function updateUserTenableSettings(
 
 export function deleteUser(userId: number): boolean {
   seedAdmin();
-  const stmt = db.prepare("DELETE FROM users WHERE id = ?");
-  const result = stmt.run(userId);
-  return result.changes > 0;
+  const transaction = db.transaction(() => {
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").run(userId);
+    db.prepare("DELETE FROM jira_export_jobs WHERE requester_id = ?").run(userId);
+    db.prepare("DELETE FROM notifications WHERE user_id = ?").run(userId);
+    db.prepare("DELETE FROM idea_suggestions WHERE user_id = ?").run(userId);
+    const result = db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    return result.changes;
+  });
+  return transaction() > 0;
 }
 
 export function countUsersBySecurityLevel(securityLevel: string) {

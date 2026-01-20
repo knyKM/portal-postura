@@ -28,6 +28,7 @@ type JiraConfig = {
 
 type ActionPayload = {
   comment?: string;
+  commentAttachment?: { name?: string; type?: string; data?: string };
   customFields?: Array<{ id?: string; value?: string; mode?: string }>;
   assigneeCsvData?: string;
   assigneeCsvFileName?: string;
@@ -449,6 +450,41 @@ async function deleteIssue(config: JiraConfig, issueKey: string) {
   }
 }
 
+async function addIssueAttachment(
+  config: JiraConfig,
+  issueKey: string,
+  attachment: { name: string; type: string; data: string }
+) {
+  const buffer = Buffer.from(attachment.data, "base64");
+  const form = new FormData();
+  const blob = new Blob([buffer], { type: attachment.type || "application/octet-stream" });
+  form.append("file", blob, attachment.name);
+
+  const response = await jiraFetch(
+    config,
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}/attachments`,
+    {
+      method: "POST",
+      headers: {
+        "X-Atlassian-Token": "no-check",
+      },
+      body: form,
+    }
+  );
+  if (!response.ok) {
+    const raw = await response.text();
+    let data: Record<string, unknown> | null = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        data = null;
+      }
+    }
+    throw new JiraApiError(extractErrorMessage(raw, data), response.status);
+  }
+}
+
 export async function executeActionJob(jobId: number, requestId: number) {
   updateJobStatus({ id: jobId, status: "running" });
   updateActionRequestExecutionStatus({ id: requestId, status: "running" });
@@ -562,10 +598,18 @@ export async function executeActionJob(jobId: number, requestId: number) {
       } else if (targetRequest.action_type === "comment") {
         const payload = parsePayload(targetRequest.payload);
         const comment = payload?.comment?.trim();
+        const attachment = payload?.commentAttachment;
         if (!comment) {
           throw new JiraApiError("", 400);
         }
         await addIssueComment(jiraConfig, key, comment);
+        if (attachment?.data && attachment?.name) {
+          await addIssueAttachment(jiraConfig, key, {
+            name: attachment.name,
+            type: attachment.type ?? "application/octet-stream",
+            data: attachment.data,
+          });
+        }
       } else if (targetRequest.action_type === "delete") {
         await deleteIssue(jiraConfig, key);
       } else {
