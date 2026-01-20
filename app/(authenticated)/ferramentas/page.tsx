@@ -9,6 +9,7 @@ import {
   Activity,
   FileText,
   Filter,
+  FileDown,
   KanbanSquare,
   Network,
   Target,
@@ -71,6 +72,13 @@ const tools = [
     description: "Peneire chamados de alteração de status antes da aprovação.",
     href: "/ferramentas/validador-status",
     icon: Filter,
+  },
+  {
+    id: "exporter-jira",
+    title: "Exporter Jira",
+    description: "Extraia relatórios em XLSX a partir de JQL.",
+    href: "/ferramentas/exporter-jira",
+    icon: FileDown,
   },
 ];
 

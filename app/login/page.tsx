@@ -21,7 +21,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
       <div className="absolute right-0 top-0 hidden h-96 w-96 translate-x-24 -translate-y-12 rounded-full bg-purple-500/20 blur-3xl lg:block" />
       <div className="absolute left-0 bottom-0 hidden h-80 w-80 -translate-x-24 translate-y-16 rounded-full bg-indigo-600/20 blur-3xl lg:block" />
 
-      <div className="relative flex flex-col justify-between p-8 lg:p-16">
+      <div className="relative hidden flex-col justify-between p-8 lg:flex lg:p-16">
         <div>
           <div className="flex items-center gap-3">
             <div className="relative h-10 w-10 overflow-hidden rounded-full border border-white/20">
@@ -68,7 +68,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
         </div>
 
         <div className="mt-16 hidden text-sm text-zinc-400 lg:block">
-          © {new Date().getFullYear()} Postura SM · Release 1.1
+          © {new Date().getFullYear()} Postura SM · Release 1.5
         </div>
       </div>
 

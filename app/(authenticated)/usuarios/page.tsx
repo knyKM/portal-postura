@@ -62,6 +62,7 @@ const securityRouteOptions = [
   { label: "Playbooks", value: "/playbooks" },
   { label: "Ferramentas", value: "/ferramentas" },
   { label: "Gestão de Contratos", value: "/ferramentas/gestao-contratos" },
+  { label: "Exporter Jira", value: "/ferramentas/exporter-jira" },
   { label: "Auditoria", value: "/auditoria" },
   { label: "Sugestões/Problemas", value: "/sugestoes-problemas" },
   { label: "Sugestões Postura SM", value: "/sugestoes" },
