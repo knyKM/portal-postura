@@ -1,5 +1,4 @@
 import { Agent } from "undici";
-import * as XLSX from "xlsx";
 import fs from "node:fs/promises";
 import path from "node:path";
 import jiraFieldsJson from "@/data/jira-fields.json";
@@ -145,6 +144,23 @@ function formatFieldValue(value: unknown, forceNumber = false): string | number 
   return "";
 }
 
+function formatCsvValue(value: string | number, delimiter: string) {
+  const stringValue = String(value ?? "");
+  const needsWrap =
+    stringValue.includes(delimiter) ||
+    stringValue.includes("\"") ||
+    stringValue.includes("\n") ||
+    stringValue.includes("\r");
+  if (!needsWrap) return stringValue;
+  return `"${stringValue.replace(/"/g, "\"\"")}"`;
+}
+
+function toCsv(rows: Array<Array<string | number>>, delimiter = ";") {
+  return rows
+    .map((row) => row.map((value) => formatCsvValue(value, delimiter)).join(delimiter))
+    .join("\r\n");
+}
+
 function buildDownloadUrl(jobId: number) {
   const baseUrl = process.env.APP_BASE_URL?.replace(/\/+$/, "");
   if (!baseUrl) return `/api/jira-export/jobs/${jobId}/download`;
@@ -240,14 +256,12 @@ export async function runJiraExportJob(jobId: number) {
       processedIssues: issues.length,
     });
 
-    const sheet = XLSX.utils.aoa_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, "Export");
-    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    const csvContent = toCsv(rows, ";");
+    const buffer = Buffer.from(`\uFEFF${csvContent}`, "utf8");
 
     const exportDir = path.join(process.cwd(), "tmp", "exports");
     await fs.mkdir(exportDir, { recursive: true });
-    const fileName = `jira-export-${jobId}.xlsx`;
+    const fileName = `jira-export-${jobId}.csv`;
     const filePath = path.join(exportDir, fileName);
     await fs.writeFile(filePath, buffer);
     const expiresAt = getLocalTimestamp(new Date(Date.now() + 4 * 24 * 60 * 60 * 1000));

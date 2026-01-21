@@ -76,7 +76,7 @@ const tools = [
   {
     id: "exporter-jira",
     title: "Exporter Jira",
-    description: "Extraia relatórios em XLSX a partir de JQL.",
+    description: "Extraia relatórios em CSV a partir de JQL.",
     href: "/ferramentas/exporter-jira",
     icon: FileDown,
   },

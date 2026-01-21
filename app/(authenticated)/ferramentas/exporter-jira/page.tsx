@@ -205,7 +205,7 @@ export default function ExporterJiraPage() {
   return (
     <DashboardShell
       pageTitle="Exporter Jira"
-      pageSubtitle="Extraia relatórios em XLSX a partir de uma JQL."
+      pageSubtitle="Extraia relatórios em CSV a partir de uma JQL."
     >
       <div className="flex w-full flex-col gap-6 px-4 pb-10 lg:px-10">
         <section
@@ -231,7 +231,7 @@ export default function ExporterJiraPage() {
                 Relatórios sob demanda
               </h2>
               <p className="text-sm text-zinc-400">
-                Informe a JQL e selecione os campos que deseja incluir no XLSX.
+                Informe a JQL e selecione os campos que deseja incluir no CSV.
               </p>
             </div>
             <Button
@@ -241,7 +241,7 @@ export default function ExporterJiraPage() {
               disabled={exporting}
             >
               <Download className="mr-2 h-4 w-4" />
-              {exporting ? "Exportando..." : "Exportar XLSX"}
+              {exporting ? "Exportando..." : "Exportar CSV"}
             </Button>
           </div>
         </section>
@@ -436,7 +436,7 @@ export default function ExporterJiraPage() {
                             window.location.href = `/api/jira-export/jobs/${job.id}/download`;
                           }}
                         >
-                          Baixar XLSX
+                          Baixar CSV
                         </Button>
                       ) : (
                         <span className="text-xs text-zinc-500">

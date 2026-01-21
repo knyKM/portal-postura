@@ -41,12 +41,14 @@ export async function GET(
 
   try {
     const buffer = await fs.readFile(job.file_path);
-    const filename = job.file_name ?? `jira-export-${job.id}.xlsx`;
+    const filename = job.file_name ?? `jira-export-${job.id}.csv`;
+    const isXlsx = filename.toLowerCase().endsWith(".xlsx");
     return new NextResponse(buffer, {
       status: 200,
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Type": isXlsx
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
