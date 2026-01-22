@@ -93,6 +93,10 @@ export default function VulnerabilidadesPage() {
     Record<string, string>
   >({});
   const [query, setQuery] = useState("");
+  const [historyModal, setHistoryModal] = useState<{
+    vulnerabilityId: string;
+    serverId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -315,6 +319,29 @@ export default function VulnerabilidadesPage() {
       .filter((item) => item.vulnerability_id === vulnId && item.server_id === serverId)
       .sort((a, b) => a.requested_at.localeCompare(b.requested_at));
   }
+
+  const historyModalData = useMemo(() => {
+    if (!historyModal) return null;
+    const vulnerability = vulnerabilities.find(
+      (item) => item.id === historyModal.vulnerabilityId
+    );
+    const server = serverById[historyModal.serverId];
+    const link = links[historyModal.vulnerabilityId]?.[historyModal.serverId];
+    if (!vulnerability || !server || !link) return null;
+    return {
+      vulnerability,
+      server,
+      link,
+      retestHistory: getRetestHistory(
+        historyModal.vulnerabilityId,
+        historyModal.serverId
+      ),
+    };
+  }, [historyModal, vulnerabilities, serverById, links, retests]);
+
+  const historyOccurrenceDates = historyModalData?.link.occurrenceDates ?? [];
+  const historyResolvedDates = historyModalData?.link.resolvedDates ?? [];
+  const historyRetestRecords = historyModalData?.retestHistory ?? [];
 
   function splitQuery(input: string) {
     const tokens: string[] = [];
@@ -786,47 +813,43 @@ export default function VulnerabilidadesPage() {
                                     >
                                       Reteste OK
                                     </Button>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="rounded-xl text-[11px]"
-                                      onClick={() => completeRetest(vuln.id, serverId, "failed")}
-                                    >
-                                      Reteste falhou
-                                    </Button>
-                                    <Link
-                                      href={`/vulnerabilidades/ativos/${serverId}`}
-                                      className={cn(
-                                        "flex items-center justify-center rounded-xl border px-3 py-2 text-[11px] font-semibold",
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl text-[11px]"
+                                    onClick={() => completeRetest(vuln.id, serverId, "failed")}
+                                  >
+                                    Reteste falhou
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl text-[11px]"
+                                    onClick={() =>
+                                      setHistoryModal({
+                                        vulnerabilityId: vuln.id,
+                                        serverId,
+                                      })
+                                    }
+                                  >
+                                    Ver ocorrências
+                                  </Button>
+                                  <Link
+                                    href={`/vulnerabilidades/ativos/${serverId}`}
+                                    className={cn(
+                                      "flex items-center justify-center rounded-xl border px-3 py-2 text-[11px] font-semibold",
                                         isDark
                                           ? "border-white/10 text-zinc-200"
                                           : "border-slate-200 text-slate-700"
                                       )}
                                     >
-                                      Ver ativo
-                                    </Link>
-                                  </div>
+                                    Ver ativo
+                                  </Link>
                                 </div>
-                                {retestHistory.length > 0 && (
-                                  <div className="mt-3 space-y-1 text-[11px] text-zinc-500">
-                                    {retestHistory.slice(-3).map((item) => (
-                                      <div key={item.id}>
-                                        Reteste{" "}
-                                        {item.status === "requested"
-                                          ? "solicitado"
-                                          : item.status === "passed"
-                                          ? "corrigido"
-                                          : "falhou"}{" "}
-                                        em {formatDate(item.requested_at)}
-                                        {item.retested_at
-                                          ? ` · Resultado em ${formatDate(item.retested_at)}`
-                                          : ""}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
+                            </div>
                             );
                           })}
                         </div>
@@ -856,7 +879,7 @@ export default function VulnerabilidadesPage() {
                                     : "border-slate-200 bg-slate-50 text-slate-700"
                                 )}
                               >
-                                <div className="flex items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div>
                                     <p className="font-semibold">
                                       {server.name} · {server.ip}
@@ -871,26 +894,42 @@ export default function VulnerabilidadesPage() {
                                       Última correção: {formatDate(entry.resolvedDates.at(-1))}
                                     </p>
                                   </div>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl text-[11px]"
-                                    onClick={() => ensureEntry(vuln.id, serverId)}
-                                  >
-                                    Reabrir
-                                  </Button>
-                                  <Link
-                                    href={`/vulnerabilidades/ativos/${serverId}`}
-                                    className={cn(
-                                      "rounded-xl border px-3 py-2 text-[11px] font-semibold",
-                                      isDark
-                                        ? "border-white/10 text-zinc-200"
-                                        : "border-slate-200 text-slate-700"
-                                    )}
-                                  >
-                                    Ver ativo
-                                  </Link>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="rounded-xl text-[11px]"
+                                      onClick={() =>
+                                        setHistoryModal({
+                                          vulnerabilityId: vuln.id,
+                                          serverId,
+                                        })
+                                      }
+                                    >
+                                      Ver ocorrências
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="rounded-xl text-[11px]"
+                                      onClick={() => ensureEntry(vuln.id, serverId)}
+                                    >
+                                      Reabrir
+                                    </Button>
+                                    <Link
+                                      href={`/vulnerabilidades/ativos/${serverId}`}
+                                      className={cn(
+                                        "rounded-xl border px-3 py-2 text-[11px] font-semibold",
+                                        isDark
+                                          ? "border-white/10 text-zinc-200"
+                                          : "border-slate-200 text-slate-700"
+                                      )}
+                                    >
+                                      Ver ativo
+                                    </Link>
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -958,6 +997,176 @@ export default function VulnerabilidadesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {historyModalData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8"
+          onClick={() => setHistoryModal(null)}
+        >
+          <div
+            className={cn(
+              "w-full max-w-3xl rounded-3xl border p-6 shadow-2xl",
+              isDark
+                ? "border-white/10 bg-[#050816] text-white"
+                : "border-slate-200 bg-white text-slate-900"
+            )}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                  Ocorrências do ativo
+                </p>
+                <h3 className="mt-2 text-lg font-semibold">
+                  {historyModalData.server.name} · {historyModalData.server.ip}
+                </h3>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {historyModalData.vulnerability.title}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="rounded-xl text-[11px]"
+                onClick={() => setHistoryModal(null)}
+              >
+                Fechar
+              </Button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div
+                className={cn(
+                  "rounded-2xl border p-4 text-xs",
+                  isDark
+                    ? "border-white/10 bg-white/5 text-zinc-200"
+                    : "border-slate-200 bg-slate-50 text-slate-700"
+                )}
+              >
+                <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-400">
+                  Ocorrências registradas
+                </p>
+                <div className="mt-3 space-y-1 text-[11px] text-zinc-500">
+                  <p>
+                    Primeira ocorrência: {formatDate(historyOccurrenceDates[0])}
+                  </p>
+                  <p>
+                    Última ocorrência:{" "}
+                    {formatDate(historyOccurrenceDates.at(-1))}
+                  </p>
+                  <p>
+                    Total: {historyOccurrenceDates.length} ocorrência
+                    {historyOccurrenceDates.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {historyOccurrenceDates.length === 0 ? (
+                    <span className="text-[11px] text-zinc-500">
+                      Sem ocorrências registradas.
+                    </span>
+                  ) : (
+                    historyOccurrenceDates.map((date) => (
+                      <span
+                        key={date}
+                        className={cn(
+                          "rounded-full border px-2 py-1 text-[10px] font-semibold",
+                          isDark
+                            ? "border-white/10 text-zinc-200"
+                            : "border-slate-200 text-slate-600"
+                        )}
+                      >
+                        {formatDate(date)}
+                      </span>
+                    ))
+                  )}
+                </div>
+                {historyResolvedDates.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-400">
+                      Correções registradas
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {historyResolvedDates.map((date) => (
+                        <span
+                          key={date}
+                          className={cn(
+                            "rounded-full px-2 py-1 text-[10px] font-semibold",
+                            isDark
+                              ? "bg-emerald-500/15 text-emerald-200"
+                              : "bg-emerald-50 text-emerald-700"
+                          )}
+                        >
+                          {formatDate(date)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={cn(
+                  "rounded-2xl border p-4 text-xs",
+                  isDark
+                    ? "border-white/10 bg-white/5 text-zinc-200"
+                    : "border-slate-200 bg-slate-50 text-slate-700"
+                )}
+              >
+                <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-400">
+                  Retestes e validações
+                </p>
+                {historyRetestRecords.length === 0 ? (
+                  <p className="mt-3 text-[11px] text-zinc-500">
+                    Nenhum reteste solicitado.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {historyRetestRecords.map((item) => (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "rounded-xl border px-3 py-2 text-[11px]",
+                          isDark
+                            ? "border-white/10 bg-[#050816]"
+                            : "border-slate-200 bg-white"
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
+                              item.status === "passed"
+                                ? "bg-emerald-500/15 text-emerald-200"
+                                : item.status === "requested"
+                                ? "bg-amber-500/15 text-amber-200"
+                                : "bg-rose-500/15 text-rose-200"
+                            )}
+                          >
+                            {item.status === "requested"
+                              ? "Solicitado"
+                              : item.status === "passed"
+                              ? "Corrigido"
+                              : "Falhou"}
+                          </span>
+                          <span className="text-zinc-500">
+                            Solicitado em {formatDate(item.requested_at)}
+                          </span>
+                        </div>
+                        {item.retested_at && (
+                          <p className="mt-1 text-zinc-500">
+                            Resultado em {formatDate(item.retested_at)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardShell>
   );
 }
