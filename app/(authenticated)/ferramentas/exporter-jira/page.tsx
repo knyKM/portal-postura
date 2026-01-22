@@ -28,6 +28,7 @@ type LinkedIssueSubfield = {
 
 type ExportJob = {
   id: number;
+  job_name: string | null;
   jql: string;
   fields_json: string;
   status: "queued" | "running" | "completed" | "failed";
@@ -110,6 +111,7 @@ export default function ExporterJiraPage() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [loading, setLoading] = useState(true);
+  const [exportName, setExportName] = useState("");
   const [jql, setJql] = useState("");
   const [search, setSearch] = useState("");
   const [selectedFields, setSelectedFields] = useState<string[]>(["key", "summary"]);
@@ -231,13 +233,14 @@ export default function ExporterJiraPage() {
       const response = await fetch("/api/jira-export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jql, fields: fieldsForExport }),
+        body: JSON.stringify({ jql, fields: fieldsForExport, name: exportName }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(payload?.error || "Falha ao exportar.");
       }
       setMessage("Solicitação enviada. A exportação está sendo processada.");
+      setExportName("");
       await fetchJobs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao exportar.");
@@ -311,6 +314,22 @@ export default function ExporterJiraPage() {
               <CardTitle className="text-base">JQL da extração</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">
+                  Nome da exportação
+                </label>
+                <Input
+                  value={exportName}
+                  onChange={(event) => setExportName(event.target.value)}
+                  placeholder="Ex.: Vulnerabilidades críticas de janeiro"
+                  className={cn(
+                    "text-sm",
+                    isDark
+                      ? "border-white/10 bg-black/40 text-white"
+                      : "border-slate-200 bg-white"
+                  )}
+                />
+              </div>
               <div className="relative">
                 <Filter className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
                 <Input
@@ -508,6 +527,11 @@ export default function ExporterJiraPage() {
                           {job.status}
                         </Badge>
                       </div>
+                      {job.job_name && (
+                        <p className="mt-1 text-sm font-semibold text-zinc-200">
+                          {job.job_name}
+                        </p>
+                      )}
                       <p className="text-xs text-zinc-500">
                         {new Date(job.created_at).toLocaleString("pt-BR")}
                       </p>

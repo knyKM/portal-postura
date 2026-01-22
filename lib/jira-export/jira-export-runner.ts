@@ -222,6 +222,16 @@ function buildDownloadUrl(jobId: number) {
   return `${baseUrl}/api/jira-export/jobs/${jobId}/download`;
 }
 
+function slugifyFileName(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .slice(0, 60);
+}
+
 export async function runJiraExportJob(jobId: number) {
   const job = getJiraExportJobById(jobId);
   if (!job) return;
@@ -334,7 +344,10 @@ export async function runJiraExportJob(jobId: number) {
 
     const exportDir = path.join(process.cwd(), "tmp", "exports");
     await fs.mkdir(exportDir, { recursive: true });
-    const fileName = `jira-export-${jobId}.csv`;
+    const slug = job.job_name ? slugifyFileName(job.job_name) : "";
+    const fileName = slug
+      ? `jira-export-${jobId}-${slug}.csv`
+      : `jira-export-${jobId}.csv`;
     const filePath = path.join(exportDir, fileName);
     await fs.writeFile(filePath, buffer);
     const expiresAt = getLocalTimestamp(new Date(Date.now() + 4 * 24 * 60 * 60 * 1000));

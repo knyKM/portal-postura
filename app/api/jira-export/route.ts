@@ -10,10 +10,11 @@ export async function POST(request: Request) {
   }
 
   const payload = (await request.json().catch(() => null)) as
-    | { jql?: string; fields?: string[] }
+    | { jql?: string; fields?: string[]; name?: string }
     | null;
   const jql = payload?.jql?.trim() ?? "";
   const fields = Array.isArray(payload?.fields) ? payload?.fields : [];
+  const name = payload?.name?.trim() ?? "";
 
   if (!jql) {
     return NextResponse.json({ error: "Informe a JQL para exportar." }, { status: 400 });
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
 
   const job = createJiraExportJob({
     requesterId: session.id,
+    jobName: name || null,
     jql,
     fields,
   });

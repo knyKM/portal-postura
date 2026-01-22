@@ -4,6 +4,7 @@ import { getLocalTimestamp } from "@/lib/utils/time";
 export type JiraExportJobRecord = {
   id: number;
   requester_id: number;
+  job_name: string | null;
   jql: string;
   fields_json: string;
   status: "queued" | "running" | "completed" | "failed";
@@ -20,6 +21,7 @@ export type JiraExportJobRecord = {
 
 export type JiraExportJobPayload = {
   requesterId: number;
+  jobName?: string | null;
   jql: string;
   fields: string[];
 };
@@ -30,18 +32,24 @@ export function createJiraExportJob(input: JiraExportJobPayload) {
   const record = db
     .prepare<JiraExportJobRecord>(
       `INSERT INTO jira_export_jobs
-       (requester_id, jql, fields_json, status, created_at)
-       VALUES (?, ?, ?, 'queued', ?)
-       RETURNING id, requester_id, jql, fields_json, status, file_path, file_name, error_message, expires_at, total_issues, processed_issues, created_at, started_at, finished_at`
+       (requester_id, job_name, jql, fields_json, status, created_at)
+       VALUES (?, ?, ?, ?, 'queued', ?)
+       RETURNING id, requester_id, job_name, jql, fields_json, status, file_path, file_name, error_message, expires_at, total_issues, processed_issues, created_at, started_at, finished_at`
     )
-    .get(input.requesterId, input.jql, fieldsJson, now);
+    .get(
+      input.requesterId,
+      input.jobName?.trim() || null,
+      input.jql,
+      fieldsJson,
+      now
+    );
   return record;
 }
 
 export function listJiraExportJobsByUser(userId: number) {
   return db
     .prepare<JiraExportJobRecord>(
-      `SELECT id, requester_id, jql, fields_json, status, file_path, file_name, error_message,
+      `SELECT id, requester_id, job_name, jql, fields_json, status, file_path, file_name, error_message,
               expires_at, total_issues, processed_issues, created_at, started_at, finished_at
        FROM jira_export_jobs
        WHERE requester_id = ?
@@ -53,7 +61,7 @@ export function listJiraExportJobsByUser(userId: number) {
 export function getJiraExportJobById(id: number) {
   return db
     .prepare<JiraExportJobRecord>(
-      `SELECT id, requester_id, jql, fields_json, status, file_path, file_name, error_message,
+      `SELECT id, requester_id, job_name, jql, fields_json, status, file_path, file_name, error_message,
               expires_at, total_issues, processed_issues, created_at, started_at, finished_at
        FROM jira_export_jobs
        WHERE id = ?`

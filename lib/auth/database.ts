@@ -595,6 +595,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS jira_export_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     requester_id INTEGER NOT NULL,
+    job_name TEXT,
     jql TEXT NOT NULL,
     fields_json TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'queued',
@@ -617,6 +618,9 @@ const jiraExportTableInfo = db
 const hasJiraExportExpiresAt = jiraExportTableInfo.some(
   (column) => column.name === "expires_at"
 );
+const hasJiraExportJobName = jiraExportTableInfo.some(
+  (column) => column.name === "job_name"
+);
 const hasJiraExportTotalIssues = jiraExportTableInfo.some(
   (column) => column.name === "total_issues"
 );
@@ -625,6 +629,9 @@ const hasJiraExportProcessedIssues = jiraExportTableInfo.some(
 );
 if (!hasJiraExportExpiresAt) {
   db.exec("ALTER TABLE jira_export_jobs ADD COLUMN expires_at TEXT");
+}
+if (!hasJiraExportJobName) {
+  db.exec("ALTER TABLE jira_export_jobs ADD COLUMN job_name TEXT");
 }
 if (!hasJiraExportTotalIssues) {
   db.exec("ALTER TABLE jira_export_jobs ADD COLUMN total_issues INTEGER");
