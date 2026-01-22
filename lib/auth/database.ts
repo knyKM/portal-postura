@@ -646,6 +646,22 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS jira_export_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    fields_json TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_jira_export_templates_user
+  ON jira_export_templates (user_id, created_at);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS password_reset_tokens (
     token TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,

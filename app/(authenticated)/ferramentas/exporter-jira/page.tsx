@@ -42,6 +42,13 @@ type ExportJob = {
   finished_at: string | null;
 };
 
+type ExportTemplate = {
+  id: number;
+  name: string;
+  fields_json: string;
+  created_at: string;
+};
+
 function getExpirationLabel(expiresAt: string | null) {
   if (!expiresAt) return null;
   const expires = new Date(expiresAt);
@@ -120,6 +127,9 @@ export default function ExporterJiraPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [jobs, setJobs] = useState<ExportJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
+  const [templates, setTemplates] = useState<ExportTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateName, setTemplateName] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -157,9 +167,30 @@ export default function ExporterJiraPage() {
     }
   }
 
+  async function fetchTemplates() {
+    setTemplatesLoading(true);
+    try {
+      const response = await fetch("/api/jira-export/templates");
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível carregar templates.");
+      }
+      setTemplates(data?.templates ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar templates.");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!loading) {
       fetchJobs();
+      fetchTemplates();
     }
   }, [loading]);
 
@@ -217,6 +248,83 @@ export default function ExporterJiraPage() {
 
   function handleClearAll() {
     setSelectedFields([]);
+  }
+
+  function ensureLinkedIssuesFields(fields: string[]) {
+    const hasLinkedSubfields = fields.some((field) => field.startsWith("issuelinks."));
+    if (!hasLinkedSubfields) return fields;
+    return fields.includes("issuelinks") ? fields : ["issuelinks", ...fields];
+  }
+
+  async function handleSaveTemplate() {
+    setError(null);
+    setMessage(null);
+    const trimmedName = templateName.trim();
+    if (!trimmedName) {
+      setError("Informe o nome do template.");
+      return;
+    }
+    if (!selectedFields.length) {
+      setError("Selecione ao menos um campo para salvar.");
+      return;
+    }
+    try {
+      const response = await fetch("/api/jira-export/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: trimmedName,
+          fields: ensureLinkedIssuesFields(selectedFields),
+        }),
+      });
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível salvar o template.");
+      }
+      setTemplateName("");
+      setTemplates((prev) => [data.template, ...prev]);
+      setMessage("Template salvo com sucesso.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao salvar template.");
+    }
+  }
+
+  async function handleDeleteTemplate(id: number) {
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/jira-export/templates/${id}`, {
+        method: "DELETE",
+      });
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível excluir o template.");
+      }
+      setTemplates((prev) => prev.filter((template) => template.id !== id));
+      setMessage("Template removido.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao excluir template.");
+    }
+  }
+
+  function handleApplyTemplate(template: ExportTemplate) {
+    try {
+      const fields = JSON.parse(template.fields_json) as string[];
+      const normalized = Array.isArray(fields) ? ensureLinkedIssuesFields(fields) : [];
+      setSelectedFields(normalized);
+      setMessage(`Template "${template.name}" aplicado.`);
+      setError(null);
+    } catch {
+      setError("Não foi possível aplicar o template.");
+    }
   }
 
   async function handleExport() {
@@ -304,7 +412,7 @@ export default function ExporterJiraPage() {
               disabled={exporting}
             >
               <Download className="mr-2 h-4 w-4" />
-              {exporting ? "Exportando..." : "Exportar CSV"}
+        {exporting ? "Exportando..." : "Exportar CSV"}
             </Button>
           </div>
         </section>
@@ -370,6 +478,73 @@ export default function ExporterJiraPage() {
               <CardTitle className="text-base">Campos da exportação</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="rounded-2xl border border-white/10 p-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                  Templates
+                </p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    value={templateName}
+                    onChange={(event) => setTemplateName(event.target.value)}
+                    placeholder="Nome do template"
+                    className={cn(
+                      "text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white"
+                    )}
+                  />
+                  <Button type="button" variant="secondary" onClick={handleSaveTemplate}>
+                    Salvar template
+                  </Button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {templatesLoading ? (
+                    <p className="text-xs text-zinc-500">Carregando templates...</p>
+                  ) : templates.length === 0 ? (
+                    <p className="text-xs text-zinc-500">
+                      Nenhum template salvo ainda.
+                    </p>
+                  ) : (
+                    templates.map((template) => (
+                      <div
+                        key={template.id}
+                        className={cn(
+                          "flex flex-col gap-2 rounded-xl border px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between",
+                          isDark
+                            ? "border-white/10 bg-black/20 text-zinc-200"
+                            : "border-slate-200 bg-white text-slate-700"
+                        )}
+                      >
+                        <div>
+                          <p className="font-semibold">{template.name}</p>
+                          <p className="text-[11px] text-zinc-500">
+                            {new Date(template.created_at).toLocaleDateString("pt-BR")}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleApplyTemplate(template)}
+                          >
+                            Aplicar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteTemplate(template.id)}
+                          >
+                            Excluir
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
                 <Input

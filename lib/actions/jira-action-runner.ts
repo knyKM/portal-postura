@@ -33,6 +33,7 @@ type ActionPayload = {
   assigneeCsvData?: string;
   assigneeCsvFileName?: string;
   labels?: string[];
+  fields?: Array<{ key?: string; value?: string }>;
 };
 
 class JiraApiError extends Error {
@@ -403,6 +404,114 @@ async function updateIssueFields(
   }
 }
 
+type JiraEditMetaField = {
+  schema?: {
+    type?: string;
+    items?: string;
+    system?: string;
+    custom?: string;
+  };
+  allowedValues?: Array<{ id?: string; name?: string; value?: string }>;
+};
+
+async function fetchIssueEditMeta(config: JiraConfig, issueKey: string) {
+  const response = await jiraFetch(
+    config,
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}/editmeta`
+  );
+  const raw = await response.text();
+  let data: Record<string, unknown> | null = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      data = null;
+    }
+  }
+  if (!response.ok) {
+    throw new JiraApiError(extractErrorMessage(raw, data), response.status);
+  }
+  return (data?.fields as Record<string, JiraEditMetaField>) ?? {};
+}
+
+function parseLabelList(value: string) {
+  return value
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function matchAllowedValue(
+  allowed: Array<{ id?: string; name?: string; value?: string }>,
+  rawValue: string
+) {
+  const normalized = rawValue.trim().toLowerCase();
+  if (!normalized) return null;
+  const matchesId = (id?: string) => {
+    if (!id) return false;
+    return String(id).toLowerCase() === normalized;
+  };
+  const direct = allowed.find(
+    (item) =>
+      (item.value && item.value.toLowerCase() === normalized) ||
+      (item.name && item.name.toLowerCase() === normalized) ||
+      matchesId(item.id)
+  );
+  if (direct) return direct;
+  return null;
+}
+
+function buildFieldValue(
+  fieldKey: string,
+  rawValue: string,
+  meta?: JiraEditMetaField
+) {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return null;
+  const allowed = meta?.allowedValues ?? [];
+  const schemaType = meta?.schema?.type ?? "";
+  const schemaItems = meta?.schema?.items ?? "";
+
+  const isMulti =
+    schemaType === "array" &&
+    (schemaItems === "option" || allowed.length > 0);
+  const isSingle =
+    schemaType === "option" ||
+    schemaType === "issuetype" ||
+    schemaType === "priority" ||
+    allowed.length > 0;
+
+  if (isMulti) {
+    const values = parseLabelList(trimmed);
+    const mapped = values
+      .map((value) => matchAllowedValue(allowed, value))
+      .filter(Boolean) as Array<{ id?: string; name?: string; value?: string }>;
+    if (!mapped.length) {
+      throw new JiraApiError(
+        `Valor "${trimmed}" não encontrado nas opções do campo ${fieldKey}.`,
+        400
+      );
+    }
+    return mapped.map((item) => ({ id: item.id, value: item.value ?? item.name }));
+  }
+
+  if (isSingle) {
+    const matched = matchAllowedValue(allowed, trimmed);
+    if (!matched && allowed.length > 0) {
+      throw new JiraApiError(
+        `Valor "${trimmed}" não encontrado nas opções do campo ${fieldKey}.`,
+        400
+      );
+    }
+    if (matched) {
+      return { id: matched.id, value: matched.value ?? matched.name };
+    }
+    return { value: trimmed };
+  }
+
+  return trimmed;
+}
+
 async function getIssueLabels(config: JiraConfig, issueKey: string) {
   const response = await jiraFetch(
     config,
@@ -669,6 +778,28 @@ export async function executeActionJob(jobId: number, requestId: number) {
         await updateIssueFields(jiraConfig, key, { labels: merged });
       } else if (targetRequest.action_type === "delete") {
         await deleteIssue(jiraConfig, key);
+      } else if (targetRequest.action_type === "fields") {
+        const payload = parsePayload(targetRequest.payload);
+        const fieldEntries = Array.isArray(payload?.fields) ? payload?.fields : [];
+        if (!fieldEntries.length) {
+          throw new JiraApiError("", 400);
+        }
+        const editMeta = await fetchIssueEditMeta(jiraConfig, key);
+        const fieldsPayload: Record<string, unknown> = {};
+        fieldEntries.forEach((entry) => {
+          const fieldKey = entry.key?.trim();
+          const value = entry.value?.trim() ?? "";
+          if (!fieldKey || !value) return;
+          const meta = editMeta[fieldKey];
+          const mappedValue = buildFieldValue(fieldKey, value, meta);
+          if (mappedValue !== null) {
+            fieldsPayload[fieldKey] = mappedValue;
+          }
+        });
+        if (!Object.keys(fieldsPayload).length) {
+          throw new JiraApiError("", 400);
+        }
+        await updateIssueFields(jiraConfig, key, fieldsPayload);
       } else {
         throw new JiraApiError("", 400);
       }
