@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 
-const DEFAULT_EXPIRATION = "1h";
+const DEFAULT_EXPIRATION = "10m";
 const MFA_TOKEN_EXPIRATION = "10m";
 const AUTH_SECRET = process.env.AUTH_SECRET || "dev-insecure-secret-change";
 

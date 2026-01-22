@@ -77,6 +77,10 @@ export default function GestaoContratosPage() {
   const [loading, setLoading] = useState(true);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [expiringDays, setExpiringDays] = useState(30);
+  const [expiringInput, setExpiringInput] = useState("30");
+  const [expiringSaving, setExpiringSaving] = useState(false);
+  const [expiringError, setExpiringError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -136,6 +140,19 @@ export default function GestaoContratosPage() {
     return () => controller.abort();
   }, [loading]);
 
+  useEffect(() => {
+    if (loading) return;
+    fetch("/api/contracts/settings")
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (typeof data?.expiringDays === "number") {
+          setExpiringDays(data.expiringDays);
+          setExpiringInput(String(data.expiringDays));
+        }
+      })
+      .catch(() => null);
+  }, [loading]);
+
   const filteredContracts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return contracts;
@@ -168,7 +185,7 @@ export default function GestaoContratosPage() {
         expired += 1;
         return;
       }
-      const alertWindow = contract.alert_days ?? 30;
+      const alertWindow = contract.alert_days ?? expiringDays;
       if (daysRemaining !== null && daysRemaining <= alertWindow) {
         expiring += 1;
         return;
@@ -179,7 +196,7 @@ export default function GestaoContratosPage() {
       }
     });
     return { active, expiring, expired };
-  }, [contracts]);
+  }, [contracts, expiringDays]);
 
   function resetForm() {
     setTitle("");
@@ -388,6 +405,11 @@ export default function GestaoContratosPage() {
                     {card.label}
                   </p>
                   <p className="text-2xl font-semibold">{card.value}</p>
+                  {card.label === "Vencendo" && (
+                    <p className="text-[11px] text-zinc-500">
+                      Considerando {expiringDays} dias
+                    </p>
+                  )}
                 </div>
                 <div
                   className={cn(
@@ -408,6 +430,77 @@ export default function GestaoContratosPage() {
               </CardContent>
             </Card>
           ))}
+        </section>
+
+        <section
+          className={cn(
+            "flex flex-col items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-xs md:flex-row md:items-center",
+            isDark
+              ? "border-white/10 bg-black/30 text-zinc-300"
+              : "border-slate-200 bg-slate-50 text-slate-700"
+          )}
+        >
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+              Janela de vencimento
+            </p>
+            <p className="mt-1 text-sm">
+              Ajuste o prazo em dias para considerar contratos como “vencendo”.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              value={expiringInput}
+              onChange={(event) => setExpiringInput(event.target.value)}
+              className={cn(
+                "h-9 w-24 rounded-xl text-sm",
+                isDark
+                  ? "border-white/10 bg-black/40 text-white"
+                  : "border-slate-200 bg-white"
+              )}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={expiringSaving}
+              onClick={async () => {
+                const value = Number(expiringInput);
+                if (!Number.isFinite(value) || value <= 0) {
+                  setExpiringError("Informe um número válido em dias.");
+                  return;
+                }
+                setExpiringSaving(true);
+                setExpiringError(null);
+                try {
+                  const response = await fetch("/api/contracts/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ expiringDays: value }),
+                  });
+                  const data = await response.json().catch(() => null);
+                  if (!response.ok) {
+                    throw new Error(data?.error || "Não foi possível salvar.");
+                  }
+                  setExpiringDays(data?.expiringDays ?? value);
+                  setExpiringInput(String(data?.expiringDays ?? value));
+                } catch (err) {
+                  setExpiringError(
+                    err instanceof Error ? err.message : "Falha ao salvar prazo."
+                  );
+                } finally {
+                  setExpiringSaving(false);
+                }
+              }}
+            >
+              {expiringSaving ? "Salvando..." : "Salvar prazo"}
+            </Button>
+          </div>
+          {expiringError && (
+            <p className="text-xs text-rose-400">{expiringError}</p>
+          )}
         </section>
 
         {error && (
@@ -441,7 +534,7 @@ export default function GestaoContratosPage() {
           ) : (
             filteredContracts.map((contract) => {
               const daysRemaining = getDaysRemaining(contract.end_date);
-              const alertWindow = contract.alert_days ?? 30;
+              const alertWindow = contract.alert_days ?? expiringDays;
               const deadlineLabel =
                 daysRemaining === null
                   ? "Prazo indefinido"
