@@ -347,10 +347,10 @@ export type OnlineAdmin = {
   last_seen_at: string | null;
 };
 
-export function listOnlineAdmins(withinMinutes = 5): OnlineAdmin[] {
+export function listOnlineAdmins(withinMinutes = 10): OnlineAdmin[] {
   seedAdmin();
   const stmt = db.prepare<OnlineAdmin>(
-    "SELECT id, name, email, last_seen_at FROM users WHERE role = 'admin' AND last_seen_at IS NOT NULL AND datetime(last_seen_at) >= datetime('now', ?) ORDER BY datetime(last_seen_at) DESC"
+    "SELECT id, name, email, last_seen_at FROM users WHERE role = 'admin' AND last_seen_at IS NOT NULL AND datetime(last_seen_at) >= datetime('now','localtime', ?) ORDER BY datetime(last_seen_at) DESC"
   );
   return stmt.all(`-${withinMinutes} minutes`);
 }
