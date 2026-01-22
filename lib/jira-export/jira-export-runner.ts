@@ -22,6 +22,22 @@ type JiraField = {
   name: string;
 };
 
+type JiraIssueLink = {
+  inwardIssue?: {
+    key?: string;
+    fields?: Record<string, unknown>;
+  };
+  outwardIssue?: {
+    key?: string;
+    fields?: Record<string, unknown>;
+  };
+  type?: {
+    name?: string;
+    inward?: string;
+    outward?: string;
+  };
+};
+
 class JiraApiError extends Error {
   status: number;
 
@@ -144,6 +160,45 @@ function formatFieldValue(value: unknown, forceNumber = false): string | number 
   return "";
 }
 
+function extractLinkedIssueValue(link: JiraIssueLink, fieldId: string) {
+  const issue = link.inwardIssue ?? link.outwardIssue;
+  const direction = link.inwardIssue ? "inward" : link.outwardIssue ? "outward" : "";
+  if (!issue) return "";
+  if (fieldId === "issuelinks.issueKey") return issue.key ?? "";
+  if (fieldId === "issuelinks.summary") {
+    return (issue.fields?.summary as string | undefined) ?? "";
+  }
+  if (fieldId === "issuelinks.status") {
+    const status = issue.fields?.status as { name?: string } | undefined;
+    return status?.name ?? "";
+  }
+  if (fieldId === "issuelinks.type") {
+    const issueType = issue.fields?.issuetype as { name?: string } | undefined;
+    return issueType?.name ?? "";
+  }
+  if (fieldId === "issuelinks.priority") {
+    const priority = issue.fields?.priority as { name?: string } | undefined;
+    return priority?.name ?? "";
+  }
+  if (fieldId === "issuelinks.linkType") {
+    return link.type?.name ?? "";
+  }
+  if (fieldId === "issuelinks.direction") {
+    if (!direction) return "";
+    if (direction === "inward") return link.type?.inward ?? "inward";
+    return link.type?.outward ?? "outward";
+  }
+  return "";
+}
+
+function formatLinkedIssues(values: unknown, fieldId: string) {
+  if (!Array.isArray(values)) return "";
+  const extracted = values
+    .map((link) => extractLinkedIssueValue(link as JiraIssueLink, fieldId))
+    .filter((value) => typeof value === "string" && value.length > 0);
+  return extracted.join(", ");
+}
+
 function formatCsvValue(value: string | number, delimiter: string) {
   const stringValue = String(value ?? "");
   const needsWrap =
@@ -207,13 +262,28 @@ export async function runJiraExportJob(jobId: number) {
   }
 
   try {
-    const fieldsForJira = fields.filter((field) => field !== "key");
+    const fieldsForJira = fields.filter(
+      (field) => field !== "key" && !field.startsWith("issuelinks.")
+    );
+    const hasLinkedIssues =
+      fields.includes("issuelinks") ||
+      fields.some((field) => field.startsWith("issuelinks."));
+    if (hasLinkedIssues && !fieldsForJira.includes("issuelinks")) {
+      fieldsForJira.push("issuelinks");
+    }
     const { issues, total } = await fetchIssuesByJql(config, job.jql, fieldsForJira);
     const fieldCatalog = jiraFieldsJson as JiraField[];
     const labelById = new Map(
       fieldCatalog.map((field) => [field.id, field.name])
     );
     labelById.set("key", "Issue Key");
+    labelById.set("issuelinks.issueKey", "Linked Issue Key");
+    labelById.set("issuelinks.summary", "Linked Issue Summary");
+    labelById.set("issuelinks.status", "Linked Issue Status");
+    labelById.set("issuelinks.type", "Linked Issue Type");
+    labelById.set("issuelinks.priority", "Linked Issue Priority");
+    labelById.set("issuelinks.linkType", "Linked Issue Link Type");
+    labelById.set("issuelinks.direction", "Linked Issue Direction");
 
     const headers = fields.map((field) => labelById.get(field) ?? field);
     const numericFields = new Set(
@@ -232,6 +302,9 @@ export async function runJiraExportJob(jobId: number) {
     issues.forEach((issue, index) => {
       const row = fields.map((field) => {
         if (field === "key") return issue.key;
+        if (field.startsWith("issuelinks.")) {
+          return formatLinkedIssues(issue.fields?.issuelinks, field);
+        }
         const rawValue = issue.fields?.[field];
         if (numericFields.has(field)) {
           if (typeof rawValue === "number") return rawValue;

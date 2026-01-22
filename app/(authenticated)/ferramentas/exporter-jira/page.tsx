@@ -20,6 +20,12 @@ type JiraField = {
   clauseNames?: string[];
 };
 
+type LinkedIssueSubfield = {
+  id: string;
+  name: string;
+  description: string;
+};
+
 type ExportJob = {
   id: number;
   jql: string;
@@ -78,6 +84,26 @@ const fieldCatalog: JiraField[] = [
   { id: "key", name: "Issue Key", custom: false },
   ...baseFieldCatalog,
 ];
+
+const linkedIssueSubfields: LinkedIssueSubfield[] = [
+  { id: "issuelinks.issueKey", name: "Issue Key", description: "Chave da issue ligada." },
+  { id: "issuelinks.summary", name: "Summary", description: "Resumo da issue ligada." },
+  { id: "issuelinks.status", name: "Status", description: "Status atual da issue ligada." },
+  { id: "issuelinks.type", name: "Issue Type", description: "Tipo da issue ligada." },
+  { id: "issuelinks.priority", name: "Priority", description: "Prioridade da issue ligada." },
+  { id: "issuelinks.linkType", name: "Link Type", description: "Tipo do vínculo." },
+  {
+    id: "issuelinks.direction",
+    name: "Direção",
+    description: "Direção do vínculo (inward/outward).",
+  },
+];
+
+function normalizeSelectedFields(fields: string[]) {
+  const hasLinkedSubfields = fields.some((field) => field.startsWith("issuelinks."));
+  if (!hasLinkedSubfields) return fields;
+  return fields.filter((field) => field !== "issuelinks");
+}
 
 export default function ExporterJiraPage() {
   const router = useRouter();
@@ -157,14 +183,30 @@ export default function ExporterJiraPage() {
   function toggleField(fieldId: string) {
     setSelectedFields((prev) => {
       if (prev.includes(fieldId)) {
-        return prev.filter((item) => item !== fieldId);
+        const next = prev.filter((item) => item !== fieldId);
+        if (fieldId === "issuelinks") {
+          return next.filter((item) => !item.startsWith("issuelinks."));
+        }
+        if (fieldId.startsWith("issuelinks.")) {
+          const remainingLinked = next.some((item) => item.startsWith("issuelinks."));
+          return remainingLinked ? next : next.filter((item) => item !== "issuelinks");
+        }
+        return next;
+      }
+      if (fieldId.startsWith("issuelinks.")) {
+        return prev.includes("issuelinks")
+          ? [...prev, fieldId]
+          : [...prev, "issuelinks", fieldId];
       }
       return [...prev, fieldId];
     });
   }
 
   function handleSelectAll() {
-    setSelectedFields(fieldCatalog.map((field) => field.id));
+    setSelectedFields([
+      ...fieldCatalog.map((field) => field.id),
+      ...linkedIssueSubfields.map((field) => field.id),
+    ]);
   }
 
   function handleClearAll() {
@@ -176,10 +218,20 @@ export default function ExporterJiraPage() {
     setError(null);
     setMessage(null);
     try {
+      const hasLinkedIssues = selectedFields.includes("issuelinks");
+      const hasLinkedSubfields = selectedFields.some((field) =>
+        field.startsWith("issuelinks.")
+      );
+      if (hasLinkedIssues && !hasLinkedSubfields) {
+        throw new Error(
+          "Selecione pelo menos um subcampo em Linked Issues para exportar."
+        );
+      }
+      const fieldsForExport = normalizeSelectedFields(selectedFields);
       const response = await fetch("/api/jira-export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jql, fields: selectedFields }),
+        body: JSON.stringify({ jql, fields: fieldsForExport }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -320,30 +372,90 @@ export default function ExporterJiraPage() {
                 <div className="space-y-2">
                   {filteredFields.map((field) => {
                     const checked = selectedFields.includes(field.id);
+                    const isLinkedIssues = field.id === "issuelinks";
+                    const linkedSubfieldsSelected = selectedFields.some((item) =>
+                      item.startsWith("issuelinks.")
+                    );
                     return (
-                      <label
-                        key={field.id}
-                        className={cn(
-                          "flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs",
-                          checked
-                            ? isDark
-                              ? "border-purple-500/50 bg-purple-500/10 text-purple-100"
-                              : "border-purple-300 bg-purple-50 text-purple-700"
-                            : isDark
-                            ? "border-white/10 bg-black/20 text-zinc-200"
-                            : "border-slate-200 bg-white text-slate-700"
+                      <div key={field.id} className="space-y-2">
+                        <label
+                          className={cn(
+                            "flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs",
+                            checked
+                              ? isDark
+                                ? "border-purple-500/50 bg-purple-500/10 text-purple-100"
+                                : "border-purple-300 bg-purple-50 text-purple-700"
+                              : isDark
+                              ? "border-white/10 bg-black/20 text-zinc-200"
+                              : "border-slate-200 bg-white text-slate-700"
+                          )}
+                        >
+                          <div>
+                            <p className="font-semibold">{field.name}</p>
+                            <p className="text-[11px] text-zinc-500">{field.id}</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleField(field.id)}
+                          />
+                        </label>
+                        {isLinkedIssues && checked && (
+                          <div
+                            className={cn(
+                              "rounded-xl border border-dashed px-3 py-2 text-[11px]",
+                              isDark
+                                ? "border-white/10 bg-black/30 text-zinc-300"
+                                : "border-slate-200 bg-slate-50 text-slate-600"
+                            )}
+                          >
+                            <p className="text-xs font-semibold text-zinc-400">
+                              Subcampos de Linked Issues
+                            </p>
+                            <p className="mt-1 text-[11px] text-zinc-500">
+                              Escolha quais informações das issues vinculadas deseja
+                              exportar.
+                            </p>
+                            <div className="mt-3 grid gap-2 md:grid-cols-2">
+                              {linkedIssueSubfields.map((subfield) => {
+                                const subChecked = selectedFields.includes(subfield.id);
+                                return (
+                                  <label
+                                    key={subfield.id}
+                                    className={cn(
+                                      "flex items-start justify-between gap-2 rounded-lg border px-3 py-2 text-[11px]",
+                                      subChecked
+                                        ? isDark
+                                          ? "border-purple-400/40 bg-purple-500/10 text-purple-100"
+                                          : "border-purple-200 bg-purple-50 text-purple-700"
+                                        : isDark
+                                        ? "border-white/10 bg-black/20 text-zinc-200"
+                                        : "border-slate-200 bg-white text-slate-700"
+                                    )}
+                                  >
+                                    <div>
+                                      <p className="font-semibold">{subfield.name}</p>
+                                      <p className="text-[10px] text-zinc-500">
+                                        {subfield.description}
+                                      </p>
+                                    </div>
+                                    <input
+                                      type="checkbox"
+                                      checked={subChecked}
+                                      onChange={() => toggleField(subfield.id)}
+                                    />
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {!linkedSubfieldsSelected && (
+                              <p className="mt-2 text-[11px] text-amber-300">
+                                Selecione pelo menos um subcampo para exportar.
+                              </p>
+                            )}
+                          </div>
                         )}
-                      >
-                        <div>
-                          <p className="font-semibold">{field.name}</p>
-                          <p className="text-[11px] text-zinc-500">{field.id}</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleField(field.id)}
-                        />
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
