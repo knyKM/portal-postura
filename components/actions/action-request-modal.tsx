@@ -58,6 +58,7 @@ const actionLabels: Record<string, string> = {
   status: "Alterar status",
   assignee: "Mudar responsável",
   comment: "Adicionar comentário",
+  labels: "Adicionar label",
   fields: "Atualizar campos",
   escalate: "Subir issue",
   delete: "Deletar issue",
@@ -135,6 +136,9 @@ export function ActionRequestModal({
     }
     if (record.action_type === "comment") {
       return `${actionLabel} ${issuesLabel} com o comentário informado.`;
+    }
+    if (record.action_type === "labels") {
+      return `${actionLabel} ${issuesLabel} sem remover as atuais.`;
     }
     if (record.action_type === "fields") {
       return `${actionLabel} ${issuesLabel} com os campos personalizados informados.`;
@@ -405,6 +409,35 @@ export function ActionRequestModal({
                       <p className="mt-1 whitespace-pre-wrap text-sm">
                         {record.payload.comment}
                       </p>
+                    </div>
+                  )}
+                {record.action_type === "labels" &&
+                  Array.isArray(record.payload?.labels) && (
+                    <div>
+                      <p className={cn("text-xs uppercase tracking-[0.3em]", subtleText)}>
+                        Labels
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                        {record.payload.labels.length === 0 ? (
+                          <p className={cn("text-xs", subtleText)}>
+                            Nenhuma label informada.
+                          </p>
+                        ) : (
+                          record.payload.labels.map((label: string, index: number) => (
+                            <span
+                              key={`${label}-${index}`}
+                              className={cn(
+                                "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                                isDark
+                                  ? "border-white/10 bg-black/20 text-zinc-200"
+                                  : "border-slate-200 bg-white text-slate-700"
+                              )}
+                            >
+                              {label}
+                            </span>
+                          ))
+                        )}
+                      </div>
                     </div>
                   )}
                 {record.action_type === "assignee" &&

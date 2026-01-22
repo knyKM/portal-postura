@@ -21,6 +21,7 @@ type ActionPayload = {
   assigneeCsvData?: string;
   assigneeCsvFileName?: string;
   comment?: string;
+  labels?: string[];
   fields?: ActionField[];
   projectKey?: string;
   csvData?: string;
@@ -29,7 +30,7 @@ type ActionPayload = {
 
 type ApprovalRequest = {
   id: number;
-  action_type: "status" | "assignee" | "comment" | "fields" | "escalate" | "delete";
+  action_type: "status" | "assignee" | "comment" | "labels" | "fields" | "escalate" | "delete";
   filter_mode: string;
   filter_value: string;
   requested_status: string | null;
@@ -81,6 +82,7 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
     status: "Alterar status",
     assignee: "Mudar responsável",
     comment: "Adicionar comentário",
+    labels: "Adicionar label",
     fields: "Atualizar campos",
     escalate: "Subir issue",
     delete: "Deletar issue",
@@ -238,6 +240,35 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
             </p>
           </div>
         );
+      case "labels": {
+        const labels = request.payload?.labels ?? [];
+        return (
+          <div className={shellClass}>
+            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+              Labels a adicionar
+            </p>
+            {labels.length === 0 ? (
+              <p className="mt-2 text-sm">Nenhuma label informada.</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                {labels.map((label, index) => (
+                  <span
+                    key={`${request.id}-label-${index}`}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                      isDark
+                        ? "border-white/10 bg-black/20 text-zinc-200"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
       case "fields":
         return (
           <div className={shellClass}>
@@ -394,6 +425,8 @@ export function ApprovalQueue({ pending, completed, focusRequestId }: ApprovalQu
         return request.payload.comment.length > 60
           ? `${request.payload.comment.slice(0, 60).trim()}...`
           : request.payload.comment;
+      case "labels":
+        return `Labels: ${request.payload?.labels?.length ?? 0}`;
       case "fields":
         return `Campos atualizados: ${request.payload?.fields?.length ?? 0}`;
       case "escalate":

@@ -37,6 +37,7 @@ type ActionFormProps = {
   projectValue: string;
   statusValue: string;
   assigneeFields: Array<{ id: string; label: string; value: string }>;
+  labels: string;
   comment: string;
   commentAttachment: { name: string; type: string; data: string } | null;
   fields: Array<{ key: string; value: string }>;
@@ -50,6 +51,7 @@ type ActionFormProps = {
   onProjectChange: (value: string) => void;
   onStatusChange: (value: string) => void;
   onAssigneeFieldChange: (id: string, value: string) => void;
+  onLabelsChange: (value: string) => void;
   onCommentChange: (value: string) => void;
   onCommentAttachmentChange: (
     attachment: { name: string; type: string; data: string } | null
@@ -98,6 +100,7 @@ export function ActionForm(props: ActionFormProps) {
     projectValue,
     statusValue,
     assigneeFields,
+    labels,
     comment,
     commentAttachment,
     fields,
@@ -111,6 +114,7 @@ export function ActionForm(props: ActionFormProps) {
     onProjectChange,
     onStatusChange,
     onAssigneeFieldChange,
+    onLabelsChange,
     onCommentChange,
     onCommentAttachmentChange,
     onFieldKeyChange,
@@ -136,13 +140,12 @@ export function ActionForm(props: ActionFormProps) {
     () => fields.some((field) => field.key.trim() && field.value.trim()),
     [fields]
   );
+  const hasFilter = isEscalate
+    ? Boolean(filterValue.trim() || hasManualEscalateFields)
+    : Boolean(filterValue.trim());
+  const hasLabels = selectedAction === "labels" ? Boolean(labels.trim()) : true;
   const disableSubmit =
-    isSubmitting ||
-    (selectedAction === null
-      ? true
-      : isEscalate
-      ? !filterValue.trim() && !hasManualEscalateFields
-      : !filterValue.trim());
+    isSubmitting || selectedAction === null || !hasFilter || !hasLabels;
   const [fieldCatalog, setFieldCatalog] = useState<JiraField[]>(initialFieldCatalog);
   const [fieldSearch, setFieldSearch] = useState("");
   const [fieldTypeFilter, setFieldTypeFilter] = useState("all");
@@ -741,6 +744,22 @@ export function ActionForm(props: ActionFormProps) {
             <p className={cn("text-[11px]", subtleText)}>
               Comentários serão gravados com a credencial técnica e marcados como automação.
             </p>
+          </>
+        );
+      case "labels":
+        return (
+          <>
+            <FieldBlock label="Labels para adicionar" labelClassName={labelColor}>
+              <Textarea
+                className={textareaClasses}
+                placeholder="Ex: validação, patch, criticidade-alta"
+                value={labels}
+                onChange={(event) => onLabelsChange(event.target.value)}
+              />
+              <p className={cn("mt-2 text-[11px]", subtleText)}>
+                Separe por vírgulas ou linhas. As labels serão adicionadas sem remover as atuais.
+              </p>
+            </FieldBlock>
           </>
         );
       case "fields":

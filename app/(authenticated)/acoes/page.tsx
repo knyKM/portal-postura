@@ -19,6 +19,7 @@ import {
   Workflow,
   Repeat,
   UserCheck,
+  Tag,
   MessageSquare,
   ClipboardList,
   UploadCloud,
@@ -43,6 +44,12 @@ const actionOptions = [
     title: "Adicionar comentário",
     description: "Envie uma mensagem padrão para todas as issues selecionadas.",
     icon: MessageSquare,
+  },
+  {
+    id: "labels",
+    title: "Adicionar label",
+    description: "Inclua novas labels sem remover as já existentes.",
+    icon: Tag,
   },
   {
     id: "fields",
@@ -100,7 +107,7 @@ const actionLabelMap = actionOptions.reduce<Record<string, string>>(
 
 type UserActionRequest = {
   id: number;
-  action_type: "status" | "assignee" | "comment" | "fields" | "escalate" | "delete";
+  action_type: "status" | "assignee" | "comment" | "labels" | "fields" | "escalate" | "delete";
   filter_mode: string;
   filter_value: string;
   requested_status: string | null;
@@ -110,6 +117,7 @@ type UserActionRequest = {
     assigneeCsvFileName?: string;
     comment?: string;
     commentAttachment?: { name: string; type: string; data: string };
+    labels?: string[];
     fields?: Array<{ key: string; value: string }>;
     projectKey?: string;
     csvData?: string;
@@ -141,6 +149,7 @@ export default function AcoesPage() {
   const [assigneeFields, setAssigneeFields] = useState(
     assigneeCustomFields.map((field) => ({ ...field, value: "" }))
   );
+  const [labels, setLabels] = useState("");
   const [assigneeBulkCsvData, setAssigneeBulkCsvData] = useState<string | null>(null);
   const [assigneeBulkFileName, setAssigneeBulkFileName] = useState<string | null>(null);
   const [comment, setComment] = useState("");
@@ -176,6 +185,7 @@ export default function AcoesPage() {
   const [editAssigneeFields, setEditAssigneeFields] = useState(
     assigneeCustomFields.map((field) => ({ ...field, value: "" }))
   );
+  const [editLabels, setEditLabels] = useState("");
   const [editAssigneeBulkCsvData, setEditAssigneeBulkCsvData] = useState<string | null>(null);
   const [editAssigneeBulkFileName, setEditAssigneeBulkFileName] = useState<string | null>(null);
   const [editComment, setEditComment] = useState("");
@@ -262,6 +272,13 @@ export default function AcoesPage() {
   function parseIssueIds(value: string) {
     return value
       .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function parseLabels(value: string) {
+    return value
+      .split(/[\n,]+/)
       .map((item) => item.trim())
       .filter(Boolean);
   }
@@ -393,6 +410,7 @@ export default function AcoesPage() {
     assigneeFieldsValue,
     commentValue,
     commentAttachmentValue,
+    labelsValue,
     fieldsValue,
     projectValue,
     idsFileNameValue,
@@ -407,6 +425,7 @@ export default function AcoesPage() {
     assigneeFieldsValue: Array<{ id: string; label: string; value: string }>;
     commentValue: string;
     commentAttachmentValue: { name: string; type: string; data: string } | null;
+    labelsValue: string;
     fieldsValue: Array<{ key: string; value: string }>;
     projectValue: string;
     idsFileNameValue: string | null;
@@ -475,6 +494,14 @@ export default function AcoesPage() {
       return;
     }
 
+    if (actionType === "labels") {
+      const parsedLabels = parseLabels(labelsValue);
+      if (!parsedLabels.length) {
+        setError("Informe pelo menos uma label para adicionar.");
+        return;
+      }
+    }
+
     const normalizedAssigneeFields = assigneeFieldsValue
       .map((field) => ({
         id: field.id,
@@ -530,24 +557,25 @@ export default function AcoesPage() {
     setError(null);
 
     try {
-      const payload = {
-        actionType,
-        filterMode: isEscalate ? "project" : filterModeValue,
-        filterValue: isEscalate ? projectValue : filterValueValue.trim(),
-        requestedStatus: actionType === "status" ? statusValueValue : undefined,
-        assigneeFields: actionType === "assignee" ? assigneePayload : undefined,
-        assigneeCsvData: isAssigneeBulk ? assigneeCsvDataValue?.trim() : undefined,
-        assigneeCsvFileName: isAssigneeBulk ? assigneeCsvFileNameValue ?? undefined : undefined,
-        comment: actionType === "comment" ? commentValue.trim() : undefined,
-        commentAttachment:
-          actionType === "comment" && commentAttachmentValue
-            ? commentAttachmentValue
-            : undefined,
-        fields: actionType === "fields" || isEscalate ? cleanedFields : undefined,
-        projectKey: isEscalate ? projectValue : undefined,
-        csvData: isEscalate ? filterValueValue.trim() || undefined : undefined,
-        csvFileName: isEscalate ? idsFileNameValue ?? undefined : undefined,
-      };
+    const payload = {
+      actionType,
+      filterMode: isEscalate ? "project" : filterModeValue,
+      filterValue: isEscalate ? projectValue : filterValueValue.trim(),
+      requestedStatus: actionType === "status" ? statusValueValue : undefined,
+      assigneeFields: actionType === "assignee" ? assigneePayload : undefined,
+      assigneeCsvData: isAssigneeBulk ? assigneeCsvDataValue?.trim() : undefined,
+      assigneeCsvFileName: isAssigneeBulk ? assigneeCsvFileNameValue ?? undefined : undefined,
+      comment: actionType === "comment" ? commentValue.trim() : undefined,
+      commentAttachment:
+        actionType === "comment" && commentAttachmentValue
+          ? commentAttachmentValue
+          : undefined,
+      labels: actionType === "labels" ? parseLabels(labelsValue) : undefined,
+      fields: actionType === "fields" || isEscalate ? cleanedFields : undefined,
+      projectKey: isEscalate ? projectValue : undefined,
+      csvData: isEscalate ? filterValueValue.trim() || undefined : undefined,
+      csvFileName: isEscalate ? idsFileNameValue ?? undefined : undefined,
+    };
       const response = await fetch(
         requestId ? `/api/actions/requests/${requestId}` : "/api/actions/requests",
         {
@@ -572,6 +600,7 @@ export default function AcoesPage() {
       setAssigneeBulkFileName(null);
       setComment("");
       setCommentAttachment(null);
+      setLabels("");
       setFields([{ key: "", value: "" }]);
       setIdsFileName(null);
       setEditingRequestId(null);
@@ -579,6 +608,7 @@ export default function AcoesPage() {
       setEditAssigneeBulkCsvData(null);
       setEditAssigneeBulkFileName(null);
       setEditCommentAttachment(null);
+      setEditLabels("");
       triggerRequestsRefresh();
     } catch (err) {
       setError(
@@ -600,6 +630,7 @@ export default function AcoesPage() {
       assigneeFieldsValue: assigneeFields,
       commentValue: comment,
       commentAttachmentValue: commentAttachment,
+      labelsValue: labels,
       fieldsValue: fields,
       projectValue: projectKey,
       idsFileNameValue: idsFileName,
@@ -620,6 +651,7 @@ export default function AcoesPage() {
       assigneeFieldsValue: editAssigneeFields,
       commentValue: editComment,
       commentAttachmentValue: editCommentAttachment,
+      labelsValue: editLabels,
       fieldsValue: editFields,
       projectValue: editProjectKey,
       idsFileNameValue: editIdsFileName,
@@ -811,6 +843,17 @@ export default function AcoesPage() {
             : commentText;
         return `Adicionar comentário: "${preview}"`;
       }
+      case "labels": {
+        const labelsList = request.payload?.labels ?? [];
+        if (!labelsList.length) {
+          return "Adicionar labels nas issues selecionadas.";
+        }
+        const preview = labelsList.slice(0, 4).join(", ");
+        const remaining = Math.max(labelsList.length - 4, 0);
+        return remaining > 0
+          ? `Adicionar labels: ${preview} (+${remaining}).`
+          : `Adicionar labels: ${preview}.`;
+      }
       case "fields": {
         const total = request.payload?.fields?.length ?? 0;
         return total
@@ -975,6 +1018,7 @@ export default function AcoesPage() {
                     setEditingRequestId(null);
                     setEditAssigneeBulkCsvData(null);
                     setEditAssigneeBulkFileName(null);
+                    setEditLabels("");
                   }}
                 >
                   Fechar
@@ -988,6 +1032,7 @@ export default function AcoesPage() {
                   projectValue={editProjectKey}
                   statusValue={editStatusValue}
                   assigneeFields={editAssigneeFields}
+                  labels={editLabels}
                   comment={editComment}
                   commentAttachment={editCommentAttachment}
                   fields={editFields}
@@ -1025,6 +1070,7 @@ export default function AcoesPage() {
                       )
                     )
                   }
+                  onLabelsChange={(value) => setEditLabels(value)}
                   onCommentChange={(value) => setEditComment(value)}
                   onCommentAttachmentChange={(attachment) =>
                     setEditCommentAttachment(attachment)
@@ -1202,6 +1248,7 @@ export default function AcoesPage() {
           projectValue={projectKey}
           statusValue={statusValue}
           assigneeFields={assigneeFields}
+          labels={labels}
           comment={comment}
           commentAttachment={commentAttachment}
           fields={fields}
@@ -1228,11 +1275,11 @@ export default function AcoesPage() {
               )
             )
           }
+          onLabelsChange={(value) => setLabels(value)}
           onCommentChange={(value) => setComment(value)}
           onCommentAttachmentChange={(attachment) =>
             setCommentAttachment(attachment)
           }
-          onCommentAttachmentChange={(attachment) => setCommentAttachment(attachment)}
           onFieldKeyChange={(index, value) =>
             setFields((prev) =>
               prev.map((field, fieldIndex) =>
@@ -1431,6 +1478,11 @@ export default function AcoesPage() {
                                 setEditComment(request.payload?.comment ?? "");
                                 setEditCommentAttachment(
                                   request.payload?.commentAttachment ?? null
+                                );
+                                setEditLabels(
+                                  Array.isArray(request.payload?.labels)
+                                    ? request.payload?.labels?.join(", ")
+                                    : ""
                                 );
                                 setEditFields(
                                   request.payload?.fields?.length

@@ -1,3 +1,4 @@
+import { Agent } from "undici";
 import { db } from "@/lib/auth/database";
 import { getLocalTimestamp } from "@/lib/utils/time";
 
@@ -16,18 +17,34 @@ function buildTenableHeaders(credentials: TenableCredentials) {
   };
 }
 
+function shouldVerifySsl() {
+  const raw = process.env.TENABLE_VERIFY_SSL;
+  if (!raw) return true;
+  return !["false", "0", "no"].includes(raw.toLowerCase());
+}
+
 async function tenableFetch(
   path: string,
   credentials: TenableCredentials,
   init?: RequestInit
 ) {
-  return fetch(`${TENABLE_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      ...buildTenableHeaders(credentials),
-    },
-  });
+  const dispatcher = shouldVerifySsl()
+    ? undefined
+    : new Agent({ connect: { rejectUnauthorized: false } });
+  try {
+    return await fetch(`${TENABLE_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        ...buildTenableHeaders(credentials),
+      },
+      dispatcher,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Falha ao conectar no Tenable.";
+    throw new Error(message);
+  }
 }
 
 export async function fetchPlugins(credentials: TenableCredentials) {

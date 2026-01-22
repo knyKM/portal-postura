@@ -14,12 +14,13 @@ type ActionField = { key: string; value: string };
 type ActionPayload = {
   assignee?: string;
   comment?: string;
+  labels?: string[];
   fields?: ActionField[];
 };
 
 type ApprovalRequest = {
   id: number;
-  action_type: "status" | "assignee" | "comment" | "fields";
+  action_type: "status" | "assignee" | "comment" | "labels" | "fields";
   filter_mode: string;
   filter_value: string;
   requested_status: string | null;

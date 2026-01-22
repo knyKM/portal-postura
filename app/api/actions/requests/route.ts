@@ -31,6 +31,7 @@ type ActionRequestPayload = {
   assigneeCsvFileName?: string;
   comment?: string;
   commentAttachment?: { name?: string; type?: string; data?: string };
+  labels?: string[];
   fields?: Array<{ key: string; value: string }>;
   projectKey?: string;
   csvData?: string;
@@ -58,6 +59,7 @@ const SUPPORTED_ACTIONS = [
   "status",
   "assignee",
   "comment",
+  "labels",
   "fields",
   "escalate",
   "delete",
@@ -66,6 +68,7 @@ const ACTION_LABELS: Record<string, string> = {
   status: "alterar status",
   assignee: "mudar responsável",
   comment: "adicionar comentário",
+  labels: "adicionar label",
   fields: "atualizar campos",
   escalate: "subir issue",
   delete: "deletar issue",
@@ -303,6 +306,14 @@ function describeActionSummary(
         : ACTION_LABELS.assignee;
     case "comment":
       return ACTION_LABELS.comment;
+    case "labels": {
+      const total = Array.isArray((payload as { labels?: unknown })?.labels)
+        ? (payload as { labels?: unknown[] }).labels?.length ?? 0
+        : 0;
+      return total
+        ? `${ACTION_LABELS.labels} (${total} label${total > 1 ? "s" : ""})`
+        : ACTION_LABELS.labels;
+    }
     case "fields": {
       const total = Array.isArray((payload as { fields?: unknown })?.fields)
         ? (payload as { fields?: unknown[] }).fields?.length ?? 0
@@ -611,6 +622,18 @@ export async function POST(request: Request) {
     } else {
       payload = { comment };
     }
+  } else if (actionType === "labels") {
+    const rawLabels = Array.isArray(body?.labels) ? body?.labels : [];
+    const labels = rawLabels
+      .map((label) => (typeof label === "string" ? label.trim() : ""))
+      .filter(Boolean);
+    if (!labels.length) {
+      return NextResponse.json(
+        { error: "Informe ao menos uma label para adicionar." },
+        { status: 400 }
+      );
+    }
+    payload = { labels };
   } else if (actionType === "fields") {
     const fields = (body?.fields ?? []).map((field) => ({
       key: field?.key?.trim() ?? "",
@@ -743,7 +766,7 @@ export async function PATCH(request: Request) {
 
   if (
     decision === "approve" &&
-    ["status", "assignee", "comment", "delete"].includes(targetRequest.action_type)
+    ["status", "assignee", "comment", "labels", "delete"].includes(targetRequest.action_type)
   ) {
     const jiraConfig = getJiraConfig(targetRequest.requester_id);
     if (!jiraConfig.url || !jiraConfig.token) {

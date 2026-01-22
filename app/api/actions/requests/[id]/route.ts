@@ -19,6 +19,7 @@ type ResubmitPayload = {
   assigneeCsvFileName?: string;
   comment?: string;
   commentAttachment?: { name?: string; type?: string; data?: string };
+  labels?: string[];
   fields?: Array<{ key: string; value: string }>;
   projectKey?: string;
   csvData?: string;
@@ -46,6 +47,7 @@ const SUPPORTED_ACTIONS = [
   "status",
   "assignee",
   "comment",
+  "labels",
   "fields",
   "escalate",
   "delete",
@@ -200,6 +202,19 @@ export async function PATCH(
     } else {
       payload = { comment };
     }
+  } else if (actionType === "labels") {
+    const labels = Array.isArray(body?.labels)
+      ? body?.labels
+          .map((label) => (typeof label === "string" ? label.trim() : ""))
+          .filter(Boolean)
+      : [];
+    if (!labels.length) {
+      return NextResponse.json(
+        { error: "Informe ao menos uma label para adicionar." },
+        { status: 400 }
+      );
+    }
+    payload = { labels };
   } else if (actionType === "fields") {
     const fields = (body?.fields ?? []).map((field) => ({
       key: field?.key?.trim() ?? "",

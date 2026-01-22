@@ -32,6 +32,7 @@ type ActionPayload = {
   customFields?: Array<{ id?: string; value?: string; mode?: string }>;
   assigneeCsvData?: string;
   assigneeCsvFileName?: string;
+  labels?: string[];
 };
 
 class JiraApiError extends Error {
@@ -402,6 +403,53 @@ async function updateIssueFields(
   }
 }
 
+async function getIssueLabels(config: JiraConfig, issueKey: string) {
+  const response = await jiraFetch(
+    config,
+    `/rest/api/2/issue/${encodeURIComponent(issueKey)}?fields=labels`
+  );
+  const raw = await response.text();
+  let data: Record<string, unknown> | null = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      data = null;
+    }
+  }
+  if (!response.ok) {
+    throw new JiraApiError(extractErrorMessage(raw, data), response.status);
+  }
+  const fields = (data as { fields?: Record<string, unknown> })?.fields ?? {};
+  const labels = fields.labels;
+  if (Array.isArray(labels)) {
+    return labels.filter((label) => typeof label === "string") as string[];
+  }
+  return [];
+}
+
+function mergeLabels(existing: string[], incoming: string[]) {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  existing.forEach((label) => {
+    const normalized = label.trim();
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(normalized);
+  });
+  incoming.forEach((label) => {
+    const normalized = label.trim();
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(normalized);
+  });
+  return merged;
+}
+
 async function addIssueComment(
   config: JiraConfig,
   issueKey: string,
@@ -610,6 +658,15 @@ export async function executeActionJob(jobId: number, requestId: number) {
             data: attachment.data,
           });
         }
+      } else if (targetRequest.action_type === "labels") {
+        const payload = parsePayload(targetRequest.payload);
+        const incomingLabels = Array.isArray(payload?.labels) ? payload?.labels : [];
+        if (!incomingLabels.length) {
+          throw new JiraApiError("", 400);
+        }
+        const existing = await getIssueLabels(jiraConfig, key);
+        const merged = mergeLabels(existing, incomingLabels);
+        await updateIssueFields(jiraConfig, key, { labels: merged });
       } else if (targetRequest.action_type === "delete") {
         await deleteIssue(jiraConfig, key);
       } else {
