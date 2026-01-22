@@ -1,6 +1,7 @@
 import { Agent } from "undici";
 import { db } from "@/lib/auth/database";
 import { getLocalTimestamp } from "@/lib/utils/time";
+import { getIntegrationSetting } from "@/lib/settings/integration-settings";
 
 const TENABLE_BASE_URL = "https://cloud.tenable.com";
 
@@ -18,6 +19,10 @@ function buildTenableHeaders(credentials: TenableCredentials) {
 }
 
 function shouldVerifySsl() {
+  const setting = getIntegrationSetting("tenable_verify_ssl");
+  if (setting !== null) {
+    return !["false", "0", "no"].includes(String(setting).toLowerCase());
+  }
   const raw = process.env.TENABLE_VERIFY_SSL;
   if (!raw) return true;
   return !["false", "0", "no"].includes(raw.toLowerCase());

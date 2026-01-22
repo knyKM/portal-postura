@@ -39,12 +39,14 @@ export default function ConfiguracoesPage() {
   const [jiraError, setJiraError] = useState<string | null>(null);
   const [tenableAccessKey, setTenableAccessKey] = useState("");
   const [tenableSecretKey, setTenableSecretKey] = useState("");
+  const [tenableVerifySsl, setTenableVerifySsl] = useState(true);
   const [loadingTenable, setLoadingTenable] = useState(true);
   const [tenableMessage, setTenableMessage] = useState<string | null>(null);
   const [tenableError, setTenableError] = useState<string | null>(null);
   const [tenableSyncMessage, setTenableSyncMessage] = useState<string | null>(null);
   const [tenableSyncError, setTenableSyncError] = useState<string | null>(null);
   const [tenableSyncing, setTenableSyncing] = useState(false);
+  const [tenableSslSaving, setTenableSslSaving] = useState(false);
   const [jobsPaused, setJobsPaused] = useState(false);
   const [jobsMessage, setJobsMessage] = useState<string | null>(null);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -120,6 +122,15 @@ export default function ConfiguracoesPage() {
         );
       })
       .finally(() => setLoadingTenable(false));
+
+    fetch("/api/integrations/tenable/ssl")
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (typeof data?.verifySsl === "boolean") {
+          setTenableVerifySsl(data.verifySsl);
+        }
+      })
+      .catch(() => null);
 
     fetch("/api/actions/jobs?settings=1")
       .then((res) => res.json().catch(() => null))
@@ -653,7 +664,10 @@ export default function ConfiguracoesPage() {
               )}
               {tenableSyncError && (
                 <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
-                  {tenableSyncError}
+                  <p className="font-semibold uppercase tracking-[0.3em] text-rose-200/80">
+                    Log de erro
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap">{tenableSyncError}</p>
                 </div>
               )}
               {tenableSyncMessage && (
@@ -688,6 +702,15 @@ export default function ConfiguracoesPage() {
                 As chaves serão usadas para sincronizar plugins e scans do Tenable
                 Vulnerability Management.
               </p>
+              <label className="flex items-center gap-2 text-[11px] text-zinc-500">
+                <input
+                  type="checkbox"
+                  checked={!tenableVerifySsl}
+                  onChange={(event) => setTenableVerifySsl(!event.target.checked)}
+                  disabled={tenableSslSaving}
+                />
+                Ignorar verificação SSL (ambiente interno)
+              </label>
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
@@ -724,6 +747,40 @@ export default function ConfiguracoesPage() {
                 >
                   Salvar chaves
                 </Button>
+                {user?.role === "admin" && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={tenableSslSaving}
+                    onClick={async () => {
+                      setTenableSslSaving(true);
+                      setTenableError(null);
+                      setTenableMessage(null);
+                      try {
+                        const response = await fetch("/api/integrations/tenable/ssl", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ verifySsl: tenableVerifySsl }),
+                        });
+                        const data = await response.json().catch(() => null);
+                        if (!response.ok) {
+                          throw new Error(data?.error || "Falha ao salvar SSL.");
+                        }
+                        setTenableMessage("Preferência SSL salva com sucesso.");
+                      } catch (err) {
+                        setTenableError(
+                          err instanceof Error
+                            ? err.message
+                            : "Não foi possível salvar a preferência SSL."
+                        );
+                      } finally {
+                        setTenableSslSaving(false);
+                      }
+                    }}
+                  >
+                    Salvar SSL
+                  </Button>
+                )}
               </div>
               {user?.role === "admin" && (
                 <div className="flex flex-wrap justify-end gap-2">
@@ -742,7 +799,10 @@ export default function ConfiguracoesPage() {
                         );
                         const data = await response.json().catch(() => null);
                         if (!response.ok) {
-                          throw new Error(data?.error || "Falha ao sincronizar plugins.");
+                          const details = data?.details ? `\n${data.details}` : "";
+                          throw new Error(
+                            `${data?.error || "Falha ao sincronizar plugins."}${details}`
+                          );
                         }
                         setTenableSyncMessage(
                           `Plugins sincronizados: ${data?.synced ?? 0}`
@@ -775,7 +835,10 @@ export default function ConfiguracoesPage() {
                         );
                         const data = await response.json().catch(() => null);
                         if (!response.ok) {
-                          throw new Error(data?.error || "Falha ao sincronizar scans.");
+                          const details = data?.details ? `\n${data.details}` : "";
+                          throw new Error(
+                            `${data?.error || "Falha ao sincronizar scans."}${details}`
+                          );
                         }
                         setTenableSyncMessage(
                           `Scans sincronizados: ${data?.synced ?? 0}`

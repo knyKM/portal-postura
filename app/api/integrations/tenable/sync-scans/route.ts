@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       // ignore audit failures
     }
     return NextResponse.json(
-      { error: message },
+      { error: message, details: message },
       { status: 500 }
     );
   }
