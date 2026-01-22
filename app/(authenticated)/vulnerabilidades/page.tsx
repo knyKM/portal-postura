@@ -698,54 +698,85 @@ export default function VulnerabilidadesPage() {
                               <div
                                 key={`${vuln.id}-${serverId}`}
                                 className={cn(
-                                  "rounded-2xl border px-3 py-2 text-xs",
+                                  "rounded-3xl border px-4 py-4 text-xs shadow-lg",
                                   isDark
-                                    ? "border-white/10 bg-white/5 text-zinc-200"
-                                    : "border-slate-200 bg-slate-50 text-slate-700"
+                                    ? "border-white/10 bg-gradient-to-br from-[#0b1024] via-[#070b18] to-[#050814] text-zinc-200"
+                                    : "border-slate-200 bg-white text-slate-700"
                                 )}
                               >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div>
-                                    <p className="font-semibold">
-                                      {server.name} · {server.ip}
-                                    </p>
-                                    <p className="text-[11px] text-zinc-500">
-                                      {server.environment} · {entry.occurrences} ocorrência
-                                      {entry.occurrences > 1 ? "s" : ""}
-                                    </p>
-                                    <p className="text-[11px] text-zinc-500">
-                                      Última: {formatDate(entry.occurrenceDates.at(-1))}
-                                    </p>
-                                    {latestRetest && (
-                                      <p className="text-[11px] text-zinc-500">
-                                        Reteste: {latestRetest.status === "requested"
-                                          ? "Solicitado"
-                                          : latestRetest.status === "passed"
-                                          ? "Corrigido"
-                                          : "Falha"}{" "}
-                                        · {formatDate(latestRetest.retested_at ?? latestRetest.requested_at)}
+                                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                  <div className="space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-semibold text-white">
+                                        {server.name}
                                       </p>
-                                    )}
+                                      <span
+                                        className={cn(
+                                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
+                                          isDark
+                                            ? "border-white/10 text-zinc-300"
+                                            : "border-slate-200 text-slate-600"
+                                        )}
+                                      >
+                                        {server.ip}
+                                      </span>
+                                      {latestRetest && (
+                                        <span
+                                          className={cn(
+                                            "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
+                                            latestRetest.status === "passed"
+                                              ? "bg-emerald-500/15 text-emerald-200"
+                                              : latestRetest.status === "requested"
+                                              ? "bg-amber-500/15 text-amber-200"
+                                              : "bg-rose-500/15 text-rose-200"
+                                          )}
+                                        >
+                                          Reteste {latestRetest.status === "requested"
+                                            ? "Solicitado"
+                                            : latestRetest.status === "passed"
+                                            ? "OK"
+                                            : "Falhou"}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="grid gap-1 text-[11px] text-zinc-500">
+                                      <p>
+                                        {server.environment} · {entry.occurrences} ocorrência
+                                        {entry.occurrences > 1 ? "s" : ""}
+                                      </p>
+                                      <p>
+                                        Última ocorrência: {formatDate(entry.occurrenceDates.at(-1))}
+                                      </p>
+                                      {latestRetest && (
+                                        <p>
+                                          Reteste em{" "}
+                                          {formatDate(
+                                            latestRetest.retested_at ?? latestRetest.requested_at
+                                          )}
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl text-[11px]"
-                                    onClick={() => resolveEntry(vuln.id, serverId)}
-                                  >
-                                    Marcar corrigida
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl text-[11px]"
-                                    onClick={() => requestRetest(vuln.id, serverId)}
-                                  >
-                                    Enviar para reteste
-                                  </Button>
-                                  <div className="flex flex-col gap-1">
+
+                                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="rounded-xl text-[11px]"
+                                      onClick={() => resolveEntry(vuln.id, serverId)}
+                                    >
+                                      Marcar corrigida
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="rounded-xl text-[11px]"
+                                      onClick={() => requestRetest(vuln.id, serverId)}
+                                    >
+                                      Enviar para reteste
+                                    </Button>
                                     <Button
                                       type="button"
                                       size="sm"
@@ -764,21 +795,21 @@ export default function VulnerabilidadesPage() {
                                     >
                                       Reteste falhou
                                     </Button>
+                                    <Link
+                                      href={`/vulnerabilidades/ativos/${serverId}`}
+                                      className={cn(
+                                        "flex items-center justify-center rounded-xl border px-3 py-2 text-[11px] font-semibold",
+                                        isDark
+                                          ? "border-white/10 text-zinc-200"
+                                          : "border-slate-200 text-slate-700"
+                                      )}
+                                    >
+                                      Ver ativo
+                                    </Link>
                                   </div>
-                                  <Link
-                                    href={`/vulnerabilidades/ativos/${serverId}`}
-                                    className={cn(
-                                      "rounded-xl border px-3 py-2 text-[11px] font-semibold",
-                                      isDark
-                                        ? "border-white/10 text-zinc-200"
-                                        : "border-slate-200 text-slate-700"
-                                    )}
-                                  >
-                                    Ver ativo
-                                  </Link>
                                 </div>
                                 {retestHistory.length > 0 && (
-                                  <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                                  <div className="mt-3 space-y-1 text-[11px] text-zinc-500">
                                     {retestHistory.slice(-3).map((item) => (
                                       <div key={item.id}>
                                         Reteste{" "}
