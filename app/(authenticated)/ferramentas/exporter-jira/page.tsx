@@ -141,6 +141,10 @@ export default function ExporterJiraPage() {
     setJobsLoading(true);
     try {
       const response = await fetch("/api/jira-export/jobs");
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(data?.error || "Não foi possível carregar as exportações.");
@@ -235,6 +239,10 @@ export default function ExporterJiraPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jql, fields: fieldsForExport, name: exportName }),
       });
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(payload?.error || "Falha ao exportar.");

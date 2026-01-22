@@ -60,6 +60,14 @@ export function DashboardShell({
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
+  const handleSessionExpired = useCallback(() => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("postura_user");
+      window.dispatchEvent(new Event("postura_user_updated"));
+    }
+    router.replace("/login?status=expired");
+  }, [router]);
+
   // Guarda de autenticação
   useEffect(() => {
     try {
@@ -69,7 +77,7 @@ export function DashboardShell({
           : null;
 
       if (!raw) {
-        router.replace("/login");
+        handleSessionExpired();
         setCheckingAuth(false);
         return;
       }
@@ -83,10 +91,10 @@ export function DashboardShell({
       setCheckingAuth(false);
     } catch {
       localStorage.removeItem("postura_user");
-      router.replace("/login");
+      handleSessionExpired();
       setCheckingAuth(false);
     }
-  }, [router]);
+  }, [handleSessionExpired]);
 
   useEffect(() => {
     if (!user) return;
@@ -94,6 +102,12 @@ export function DashboardShell({
     void (async () => {
       try {
         const response = await fetch("/api/users/me", { cache: "no-store" });
+        if (response.status === 401) {
+          if (!ignore) {
+            handleSessionExpired();
+          }
+          return;
+        }
         const data = await response.json().catch(() => null);
         if (!response.ok) {
           return;
@@ -114,7 +128,22 @@ export function DashboardShell({
     return () => {
       ignore = true;
     };
-  }, [user?.id]);
+  }, [user?.id, handleSessionExpired]);
+
+  useEffect(() => {
+    if (!user) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const response = await fetch("/api/users/me", { cache: "no-store" });
+        if (response.status === 401) {
+          handleSessionExpired();
+        }
+      } catch {
+        // ignore
+      }
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [user, handleSessionExpired]);
 
   const alwaysAllowed = [
     "/vulnerabilidades/insights",
@@ -151,6 +180,10 @@ export function DashboardShell({
       try {
         const response = await fetch("/api/notifications");
         const data = await response.json().catch(() => null);
+        if (response.status === 401) {
+          handleSessionExpired();
+          return;
+        }
         if (!response.ok) {
           throw new Error(
             data?.error || "Não foi possível carregar notificações."
