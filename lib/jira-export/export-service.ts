@@ -7,7 +7,7 @@ export type JiraExportJobRecord = {
   job_name: string | null;
   jql: string;
   fields_json: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed" | "canceled";
   file_path: string | null;
   file_name: string | null;
   error_message: string | null;
@@ -78,7 +78,7 @@ export function updateJiraExportJobStatus({
   expiresAt,
 }: {
   id: number;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed" | "canceled";
   filePath?: string | null;
   fileName?: string | null;
   errorMessage?: string | null;
@@ -86,7 +86,8 @@ export function updateJiraExportJobStatus({
 }) {
   const now = getLocalTimestamp();
   const setStartedAt = status === "running" ? now : null;
-  const setFinishedAt = status === "completed" || status === "failed" ? now : null;
+  const setFinishedAt =
+    status === "completed" || status === "failed" || status === "canceled" ? now : null;
 
   db.prepare(
     `UPDATE jira_export_jobs

@@ -235,6 +235,7 @@ function slugifyFileName(value: string) {
 export async function runJiraExportJob(jobId: number) {
   const job = getJiraExportJobById(jobId);
   if (!job) return;
+  if (job.status === "canceled") return;
 
   updateJiraExportJobStatus({ id: jobId, status: "running" });
   const requester = getUserContactById(job.requester_id);
@@ -271,7 +272,13 @@ export async function runJiraExportJob(jobId: number) {
     return;
   }
 
+  const isCanceled = () => {
+    const latest = getJiraExportJobById(jobId);
+    return latest?.status === "canceled";
+  };
+
   try {
+    if (isCanceled()) return;
     const fieldsForJira = fields.filter(
       (field) => field !== "key" && !field.startsWith("issuelinks.")
     );
@@ -282,6 +289,7 @@ export async function runJiraExportJob(jobId: number) {
       fieldsForJira.push("issuelinks");
     }
     const { issues, total } = await fetchIssuesByJql(config, job.jql, fieldsForJira);
+    if (isCanceled()) return;
     const fieldCatalog = jiraFieldsJson as JiraField[];
     const labelById = new Map(
       fieldCatalog.map((field) => [field.id, field.name])
@@ -309,7 +317,9 @@ export async function runJiraExportJob(jobId: number) {
       processedIssues: 0,
     });
 
-    issues.forEach((issue, index) => {
+    for (let index = 0; index < issues.length; index += 1) {
+      if (isCanceled()) return;
+      const issue = issues[index];
       const row = fields.map((field) => {
         if (field === "key") return issue.key;
         if (field.startsWith("issuelinks.")) {
@@ -333,12 +343,13 @@ export async function runJiraExportJob(jobId: number) {
           processedIssues: index + 1,
         });
       }
-    });
+    }
     updateJiraExportJobProgress({
       id: jobId,
       processedIssues: issues.length,
     });
 
+    if (isCanceled()) return;
     const csvContent = toCsv(rows, ";");
     const buffer = Buffer.from(`\uFEFF${csvContent}`, "utf8");
 

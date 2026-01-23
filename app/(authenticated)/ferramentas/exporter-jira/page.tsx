@@ -31,7 +31,7 @@ type ExportJob = {
   job_name: string | null;
   jql: string;
   fields_json: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed" | "canceled";
   file_name: string | null;
   error_message: string | null;
   expires_at: string | null;
@@ -85,6 +85,23 @@ function getEtaLabel(job: ExportJob) {
   const hours = Math.floor(totalMinutes / 60);
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+function getStatusLabel(status: ExportJob["status"]) {
+  switch (status) {
+    case "queued":
+      return "Na fila";
+    case "running":
+      return "Executando";
+    case "completed":
+      return "Concluído";
+    case "failed":
+      return "Erro";
+    case "canceled":
+      return "Cancelado";
+    default:
+      return status;
+  }
 }
 
 const baseFieldCatalog = jiraFieldsJson as JiraField[];
@@ -290,6 +307,32 @@ export default function ExporterJiraPage() {
       setMessage("Template salvo com sucesso.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao salvar template.");
+    }
+  }
+
+  async function handleCancelJob(jobId: number) {
+    setError(null);
+    setMessage(null);
+    const shouldCancel = window.confirm(
+      "Tem certeza que deseja cancelar essa exportação?"
+    );
+    if (!shouldCancel) return;
+    try {
+      const response = await fetch(`/api/jira-export/jobs/${jobId}`, {
+        method: "PATCH",
+      });
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível cancelar a exportação.");
+      }
+      setMessage("Exportação cancelada com sucesso.");
+      fetchJobs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao cancelar exportação.");
     }
   }
 
@@ -707,7 +750,7 @@ export default function ExporterJiraPage() {
                             isDark ? "text-zinc-300" : "text-slate-600"
                           )}
                         >
-                          {job.status}
+                          {getStatusLabel(job.status)}
                         </Badge>
                       </div>
                       {job.job_name && (
@@ -728,7 +771,7 @@ export default function ExporterJiraPage() {
                           {job.error_message}
                         </p>
                       )}
-                      {job.status !== "completed" && job.status !== "failed" ? (
+                      {job.status === "queued" || job.status === "running" ? (
                         <div className="mt-3">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
                             <span>
@@ -757,13 +800,26 @@ export default function ExporterJiraPage() {
                         >
                           Baixar CSV
                         </Button>
+                      ) : job.status === "queued" || job.status === "running" ? (
+                        <>
+                          <span className="text-xs text-zinc-500">
+                            {job.status === "running" ? "Processando..." : "Na fila"}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => handleCancelJob(job.id)}
+                          >
+                            Cancelar
+                          </Button>
+                        </>
                       ) : (
                         <span className="text-xs text-zinc-500">
-                          {job.status === "running"
-                            ? "Processando..."
-                            : job.status === "queued"
-                            ? "Na fila"
-                            : "Erro"}
+                          {job.status === "failed"
+                            ? "Erro"
+                            : job.status === "canceled"
+                            ? "Cancelado"
+                            : "Concluído"}
                         </span>
                       )}
                     </div>
