@@ -447,6 +447,7 @@ export async function GET(request: Request) {
       statusFilter === "completed" ||
       statusFilter === "queued" ||
       statusFilter === "running" ||
+      statusFilter === "paused" ||
       statusFilter === "failed" ||
       statusFilter === "cancelled"
         ? statusFilter
@@ -460,6 +461,7 @@ export async function GET(request: Request) {
         | "completed"
         | "queued"
         | "running"
+        | "paused"
         | "failed"
         | "cancelled"
         | undefined,
@@ -477,7 +479,7 @@ export async function GET(request: Request) {
 
   if (statusFilter === "open") {
     const openRequests = listActionRequestsByStatuses(
-      ["pending", "returned", "queued", "running"],
+      ["pending", "returned", "queued", "running", "paused"],
       limit
     );
     return NextResponse.json({

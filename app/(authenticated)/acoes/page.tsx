@@ -133,6 +133,7 @@ type UserActionRequest = {
     | "returned"
     | "queued"
     | "running"
+    | "paused"
     | "completed"
     | "failed"
     | "cancelled";
@@ -777,6 +778,13 @@ export default function AcoesPage() {
             ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
             : "border-amber-200 bg-amber-50 text-amber-700",
         };
+      case "paused":
+        return {
+          label: "Pausado",
+          className: isDark
+            ? "border-purple-500/50 bg-purple-500/10 text-purple-200"
+            : "border-purple-200 bg-purple-50 text-purple-700",
+        };
       case "completed":
         return {
           label: "Execução concluída",
@@ -1383,7 +1391,7 @@ export default function AcoesPage() {
                   Carregando suas solicitações...
                 </p>
               ) : myRequests.filter((request) =>
-                  ["pending", "returned", "queued", "running"].includes(request.status)
+                  ["pending", "returned", "queued", "running", "paused"].includes(request.status)
                 ).length === 0 ? (
                 <p
                   className={cn("text-xs", isDark ? "text-zinc-500" : "text-slate-500")}
@@ -1394,7 +1402,7 @@ export default function AcoesPage() {
                 <div className="space-y-2.5">
                   {myRequests
                     .filter((request) =>
-                      ["pending", "returned", "queued", "running"].includes(request.status)
+                      ["pending", "returned", "queued", "running", "paused"].includes(request.status)
                     )
                     .map((request) => {
                     const statusInfo = getStatusInfo(request.status);
@@ -1579,6 +1587,15 @@ export default function AcoesPage() {
                             )}
                           >
                             Ação em execução. Acompanhe o progresso na fila de execução.
+                          </p>
+                        ) : request.status === "paused" ? (
+                          <p
+                            className={cn(
+                              "mt-2 text-xs",
+                              isDark ? "text-zinc-500" : "text-slate-500"
+                            )}
+                          >
+                            Ação pausada pela fila de execução.
                           </p>
                         ) : (
                           <div

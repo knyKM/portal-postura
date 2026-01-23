@@ -199,6 +199,7 @@ export function listUserRequests({
     | "completed"
     | "queued"
     | "running"
+    | "paused"
     | "failed"
     | "cancelled";
   limit?: number;
@@ -294,7 +295,7 @@ export function updateActionRequestExecutionStatus({
   errorMessage,
 }: {
   id: number;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "paused" | "completed" | "failed";
   errorMessage?: string | null;
 }) {
   const stmt = db.prepare(

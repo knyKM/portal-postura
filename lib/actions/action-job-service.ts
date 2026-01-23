@@ -4,7 +4,7 @@ import { getLocalTimestamp } from "@/lib/utils/time";
 export type ActionExecutionJobRecord = {
   id: number;
   request_id: number;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "paused" | "completed" | "failed";
   error_message: string | null;
   total_issues: number | null;
   processed_issues: number | null;
@@ -48,6 +48,13 @@ export function updateJobStatus({
     "SELECT * FROM action_execution_jobs WHERE id = ?"
   );
   return fetch.get(id);
+}
+
+export function getActionExecutionJobById(id: number) {
+  const stmt = db.prepare<ActionExecutionJobRecord>(
+    "SELECT * FROM action_execution_jobs WHERE id = ?"
+  );
+  return stmt.get(id);
 }
 
 export function updateJobProgress({

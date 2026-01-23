@@ -21,6 +21,23 @@ type JobItem = {
   requested_status: string | null;
 };
 
+function getJobStatusLabel(status: string) {
+  switch (status) {
+    case "running":
+      return "Executando";
+    case "queued":
+      return "Em fila";
+    case "paused":
+      return "Pausado";
+    case "completed":
+      return "Concluído";
+    case "failed":
+      return "Erro";
+    default:
+      return status;
+  }
+}
+
 export default function AcoesExecutandoPage() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -34,6 +51,8 @@ export default function AcoesExecutandoPage() {
   const [jobsActionLoading, setJobsActionLoading] = useState(false);
   const [filterMode, setFilterMode] = useState<"all" | "failed">("all");
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
+  const [jobActionLoading, setJobActionLoading] = useState<number | null>(null);
+  const [jobActionError, setJobActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -229,6 +248,18 @@ export default function AcoesExecutandoPage() {
             {jobsMessage}
           </div>
         )}
+        {jobActionError && (
+          <div
+            className={cn(
+              "rounded-2xl border px-4 py-3 text-xs",
+              isDark
+                ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            )}
+          >
+            {jobActionError}
+          </div>
+        )}
 
         {error && (
           <div
@@ -291,12 +322,85 @@ export default function AcoesExecutandoPage() {
                         ? "bg-amber-500/10 text-amber-300"
                         : job.status === "queued"
                         ? "bg-sky-500/10 text-sky-300"
+                        : job.status === "paused"
+                        ? "bg-purple-500/10 text-purple-300"
                         : "bg-slate-500/10 text-slate-400"
                     )}
                   >
-                    {job.status}
+                    {getJobStatusLabel(job.status)}
                   </span>
                 </div>
+                {job.status === "running" || job.status === "paused" ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {job.status === "running" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl text-xs"
+                        disabled={jobActionLoading === job.id}
+                        onClick={async () => {
+                          setJobActionLoading(job.id);
+                          setJobActionError(null);
+                          try {
+                            const response = await fetch(`/api/actions/jobs/${job.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ paused: true }),
+                            });
+                            const data = await response.json().catch(() => null);
+                            if (!response.ok) {
+                              throw new Error(data?.error || "Não foi possível pausar.");
+                            }
+                            setJobs((prev) =>
+                              prev.map((item) => (item.id === job.id ? data.job : item))
+                            );
+                          } catch (err) {
+                            setJobActionError(
+                              err instanceof Error ? err.message : "Falha ao pausar."
+                            );
+                          } finally {
+                            setJobActionLoading(null);
+                          }
+                        }}
+                      >
+                        Pausar job
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl text-xs"
+                        disabled={jobActionLoading === job.id}
+                        onClick={async () => {
+                          setJobActionLoading(job.id);
+                          setJobActionError(null);
+                          try {
+                            const response = await fetch(`/api/actions/jobs/${job.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ resume: true }),
+                            });
+                            const data = await response.json().catch(() => null);
+                            if (!response.ok) {
+                              throw new Error(data?.error || "Não foi possível retomar.");
+                            }
+                            setJobs((prev) =>
+                              prev.map((item) => (item.id === job.id ? data.job : item))
+                            );
+                          } catch (err) {
+                            setJobActionError(
+                              err instanceof Error ? err.message : "Falha ao retomar."
+                            );
+                          } finally {
+                            setJobActionLoading(null);
+                          }
+                        }}
+                      >
+                        Retomar job
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
                 {job.status === "running" && (
                   <div className="mt-3 space-y-2">
                     <p className={cn("text-xs", isDark ? "text-zinc-400" : "text-slate-500")}>

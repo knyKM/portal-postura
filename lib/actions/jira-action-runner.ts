@@ -10,6 +10,7 @@ import {
   updateJobProgress,
   listQueuedActionExecutionJobs,
   getRunningJobsCount,
+  getActionExecutionJobById,
 } from "@/lib/actions/action-job-service";
 import {
   ASSIGNEE_CUSTOM_FIELDS,
@@ -693,9 +694,30 @@ export async function executeActionJob(jobId: number, requestId: number) {
     return;
   }
 
-  let processedCount = 0;
-  updateJobProgress({ id: jobId, totalIssues: issueKeys.length, processedIssues: 0 });
-  for (const key of issueKeys) {
+  const jobSnapshot = getActionExecutionJobById(jobId);
+  let processedCount = jobSnapshot?.processed_issues ?? 0;
+  const totalIssues = issueKeys.length;
+  updateJobProgress({
+    id: jobId,
+    totalIssues,
+    processedIssues: processedCount,
+  });
+  const pendingKeys =
+    processedCount > 0 && processedCount < issueKeys.length
+      ? issueKeys.slice(processedCount)
+      : issueKeys;
+
+  const shouldPause = () => {
+    const current = getActionExecutionJobById(jobId);
+    return current?.status === "paused";
+  };
+
+  for (const key of pendingKeys) {
+    if (shouldPause()) {
+      updateJobStatus({ id: jobId, status: "paused" });
+      updateActionRequestExecutionStatus({ id: requestId, status: "paused" });
+      return;
+    }
     try {
       if (targetRequest.action_type === "status") {
         const targetStatus = targetRequest.requested_status?.trim();
