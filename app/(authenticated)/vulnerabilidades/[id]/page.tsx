@@ -599,7 +599,7 @@ export default function VulnerabilidadeDetailPage() {
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <Card
           className={cn(
-            "rounded-3xl border p-4",
+            "rounded-3xl border p-4 md:col-span-2",
             isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
           )}
         >
@@ -607,20 +607,24 @@ export default function VulnerabilidadeDetailPage() {
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
               Observações
             </p>
-            <p className="mt-2 text-sm text-zinc-200">{vulnerability.observations}</p>
-          </CardContent>
-        </Card>
-        <Card
-          className={cn(
-            "rounded-3xl border p-4",
-            isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
-          )}
-        >
-          <CardContent className="p-0">
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-              Correção recomendada
-            </p>
-            <p className="mt-2 text-sm text-zinc-200">{vulnerability.remediation}</p>
+            <div className="mt-3 space-y-4 text-sm text-zinc-200">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                  Descrição
+                </p>
+                <p className="mt-2 text-sm text-zinc-200">
+                  {vulnerability.description || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                  Remediação
+                </p>
+                <p className="mt-2 text-sm text-zinc-200">
+                  {vulnerability.remediation || "—"}
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
