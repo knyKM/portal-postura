@@ -32,3 +32,4 @@ offline-npm-cache/
 offline-npm-cache.tgz
 offline-npm-cache*.tgz
 *.sst
+data/auth*
