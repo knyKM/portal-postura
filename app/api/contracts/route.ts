@@ -40,6 +40,23 @@ function sanitizeStatus(value?: string) {
   return "ativo";
 }
 
+function parseLocaleNumber(value?: string | number | null) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[^\d,.-]/g, "");
+  if (!cleaned) return null;
+  const hasComma = cleaned.includes(",");
+  const hasDot = cleaned.includes(".");
+  let normalized = cleaned;
+  if (hasComma && hasDot) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    normalized = cleaned.replace(",", ".");
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function GET(request: Request) {
   const session = await getSessionUser(request.headers.get("cookie") ?? undefined);
   if (!session) {
@@ -89,19 +106,15 @@ export async function POST(request: Request) {
     typeof payload.contractScope === "string" ? payload.contractScope.trim() : "";
   const management =
     typeof payload.management === "string" ? payload.management.trim() : "";
+  const supplementalUsedRaw = parseLocaleNumber(payload.supplementalUsed ?? null);
   const supplementalUsed =
-    typeof payload.supplementalUsed === "number" && Number.isFinite(payload.supplementalUsed)
-      ? Math.max(0, payload.supplementalUsed)
-      : null;
+    typeof supplementalUsedRaw === "number" ? Math.max(0, supplementalUsedRaw) : null;
   const status = sanitizeStatus(payload.status);
   const alertDays =
     typeof payload.alertDays === "number" && Number.isFinite(payload.alertDays)
       ? Math.max(0, Math.round(payload.alertDays))
       : 30;
-  const valueAmount =
-    typeof payload.valueAmount === "number" && Number.isFinite(payload.valueAmount)
-      ? payload.valueAmount
-      : null;
+  const valueAmount = parseLocaleNumber(payload.valueAmount ?? null);
   const valueCurrency =
     typeof payload.valueCurrency === "string" ? payload.valueCurrency.trim() : "";
   const notes = typeof payload.notes === "string" ? payload.notes.trim() : "";
@@ -204,19 +217,15 @@ export async function PATCH(request: Request) {
     typeof payload.contractScope === "string" ? payload.contractScope.trim() : "";
   const management =
     typeof payload.management === "string" ? payload.management.trim() : "";
+  const supplementalUsedRaw = parseLocaleNumber(payload.supplementalUsed ?? null);
   const supplementalUsed =
-    typeof payload.supplementalUsed === "number" && Number.isFinite(payload.supplementalUsed)
-      ? Math.max(0, payload.supplementalUsed)
-      : null;
+    typeof supplementalUsedRaw === "number" ? Math.max(0, supplementalUsedRaw) : null;
   const status = sanitizeStatus(payload.status);
   const alertDays =
     typeof payload.alertDays === "number" && Number.isFinite(payload.alertDays)
       ? Math.max(0, Math.round(payload.alertDays))
       : 30;
-  const valueAmount =
-    typeof payload.valueAmount === "number" && Number.isFinite(payload.valueAmount)
-      ? payload.valueAmount
-      : null;
+  const valueAmount = parseLocaleNumber(payload.valueAmount ?? null);
   const valueCurrency =
     typeof payload.valueCurrency === "string" ? payload.valueCurrency.trim() : "";
   const notes = typeof payload.notes === "string" ? payload.notes.trim() : "";
