@@ -40,6 +40,8 @@ export default function ConfiguracoesPage() {
   const [tenableAccessKey, setTenableAccessKey] = useState("");
   const [tenableSecretKey, setTenableSecretKey] = useState("");
   const [tenableVerifySsl, setTenableVerifySsl] = useState(true);
+  const [tenableProxyHost, setTenableProxyHost] = useState("");
+  const [tenableProxyPort, setTenableProxyPort] = useState("");
   const [loadingTenable, setLoadingTenable] = useState(true);
   const [tenableMessage, setTenableMessage] = useState<string | null>(null);
   const [tenableError, setTenableError] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export default function ConfiguracoesPage() {
   const [tenableSyncError, setTenableSyncError] = useState<string | null>(null);
   const [tenableSyncing, setTenableSyncing] = useState(false);
   const [tenableSslSaving, setTenableSslSaving] = useState(false);
+  const [tenableProxySaving, setTenableProxySaving] = useState(false);
   const [jobsPaused, setJobsPaused] = useState(false);
   const [jobsMessage, setJobsMessage] = useState<string | null>(null);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -131,6 +134,18 @@ export default function ConfiguracoesPage() {
         }
       })
       .catch(() => null);
+
+    if (user?.role === "admin") {
+      fetch("/api/integrations/tenable/proxy")
+        .then((res) => res.json().catch(() => null))
+        .then((data) => {
+          if (!data?.error) {
+            setTenableProxyHost(data?.host ?? "");
+            setTenableProxyPort(data?.port ?? "");
+          }
+        })
+        .catch(() => null);
+    }
 
     fetch("/api/actions/jobs?settings=1")
       .then((res) => res.json().catch(() => null))
@@ -711,6 +726,66 @@ export default function ConfiguracoesPage() {
                 />
                 Ignorar verificação SSL (ambiente interno)
               </label>
+              {user?.role === "admin" && (
+                <div className="grid gap-3 rounded-2xl border border-white/10 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                    Proxy Tenable
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input
+                      value={tenableProxyHost}
+                      onChange={(event) => setTenableProxyHost(event.target.value)}
+                      placeholder="Host do proxy (ex.: proxy.local)"
+                      className="rounded-xl"
+                    />
+                    <Input
+                      value={tenableProxyPort}
+                      onChange={(event) => setTenableProxyPort(event.target.value)}
+                      placeholder="Porta (ex.: 8080)"
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={tenableProxySaving}
+                      onClick={async () => {
+                        setTenableProxySaving(true);
+                        setTenableError(null);
+                        setTenableMessage(null);
+                        try {
+                          const response = await fetch("/api/integrations/tenable/proxy", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              host: tenableProxyHost,
+                              port: tenableProxyPort,
+                            }),
+                          });
+                          const data = await response.json().catch(() => null);
+                          if (!response.ok) {
+                            throw new Error(data?.error || "Falha ao salvar proxy.");
+                          }
+                          setTenableProxyHost(data?.host ?? tenableProxyHost);
+                          setTenableProxyPort(data?.port ?? tenableProxyPort);
+                          setTenableMessage("Proxy salvo com sucesso.");
+                        } catch (err) {
+                          setTenableError(
+                            err instanceof Error
+                              ? err.message
+                              : "Não foi possível salvar o proxy."
+                          );
+                        } finally {
+                          setTenableProxySaving(false);
+                        }
+                      }}
+                    >
+                      Salvar proxy
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"

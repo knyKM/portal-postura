@@ -1,4 +1,4 @@
-import { Agent } from "undici";
+import { Agent, ProxyAgent } from "undici";
 import { db } from "@/lib/auth/database";
 import { getLocalTimestamp } from "@/lib/utils/time";
 import { getIntegrationSetting } from "@/lib/settings/integration-settings";
@@ -28,12 +28,25 @@ function shouldVerifySsl() {
   return !["false", "0", "no"].includes(raw.toLowerCase());
 }
 
+function getTenableProxyUrl() {
+  const host = getIntegrationSetting("tenable_proxy_host");
+  const port = getIntegrationSetting("tenable_proxy_port");
+  if (!host || !port) return null;
+  const trimmedHost = String(host).trim();
+  const trimmedPort = String(port).trim();
+  if (!trimmedHost || !trimmedPort) return null;
+  return `http://${trimmedHost}:${trimmedPort}`;
+}
+
 async function tenableFetch(
   path: string,
   credentials: TenableCredentials,
   init?: RequestInit
 ) {
-  const dispatcher = shouldVerifySsl()
+  const proxyUrl = getTenableProxyUrl();
+  const dispatcher = proxyUrl
+    ? new ProxyAgent(proxyUrl)
+    : shouldVerifySsl()
     ? undefined
     : new Agent({ connect: { rejectUnauthorized: false } });
   try {
