@@ -12,6 +12,7 @@ type JobItem = {
   request_id: number;
   status: string;
   error_message: string | null;
+  error_status_code: number | null;
   total_issues: number | null;
   processed_issues: number | null;
   created_at: string;
@@ -29,6 +30,12 @@ function getJobStatusLabel(status: string) {
       return "Em fila";
     case "paused":
       return "Pausado";
+    case "frozen":
+      return "Congelado";
+    case "cancelled":
+      return "Cancelado";
+    case "returned":
+      return "Devolvido";
     case "completed":
       return "Concluído";
     case "failed":
@@ -278,7 +285,7 @@ export default function AcoesExecutandoPage() {
           <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
             Carregando execuções...
           </p>
-        ) : jobs.filter((job) => (filterMode === "failed" ? job.status === "failed" : true))
+        ) : jobs.filter((job) => (filterMode === "failed" ? job.status === "failed" : job.status !== "frozen"))
             .length === 0 ? (
           <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
             {filterMode === "failed"
@@ -289,7 +296,7 @@ export default function AcoesExecutandoPage() {
           <div className="space-y-3">
             {jobs
               .filter((job) =>
-                filterMode === "failed" ? job.status === "failed" : true
+                filterMode === "failed" ? job.status === "failed" : job.status !== "frozen"
               )
               .map((job) => (
               <div
@@ -324,6 +331,8 @@ export default function AcoesExecutandoPage() {
                         ? "bg-sky-500/10 text-sky-300"
                         : job.status === "paused"
                         ? "bg-purple-500/10 text-purple-300"
+                        : job.status === "frozen"
+                        ? "bg-rose-500/10 text-rose-300"
                         : "bg-slate-500/10 text-slate-400"
                     )}
                   >
@@ -438,12 +447,189 @@ export default function AcoesExecutandoPage() {
                 <div className="mt-2 text-xs">
                   <p>Início: {job.started_at ?? "-"}</p>
                   <p>Fim: {job.finished_at ?? "-"}</p>
-                  {job.error_message && <p>Erro: {job.error_message}</p>}
+                  {job.error_message && (
+                    <p>
+                      Erro: {job.error_message}
+                      {job.error_status_code
+                        ? ` (status ${job.error_status_code})`
+                        : ""}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
+
+        <div className="mt-6 space-y-3">
+          <div
+            className={cn(
+              "flex items-center justify-between rounded-3xl border px-5 py-4",
+              isDark
+                ? "border-white/5 bg-[#0b1122]"
+                : "border-slate-200 bg-white"
+            )}
+          >
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                Chamados congelados
+              </p>
+              <p className={cn("text-sm", isDark ? "text-zinc-300" : "text-slate-600")}>
+                Execuções interrompidas por erro da API.
+              </p>
+            </div>
+          </div>
+          {jobs.filter((job) => job.status === "frozen").length === 0 ? (
+            <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
+              Nenhum chamado congelado.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {jobs
+                .filter((job) => job.status === "frozen")
+                .map((job) => (
+                  <div
+                    key={`frozen-${job.id}`}
+                    className={cn(
+                      "rounded-3xl border px-5 py-4",
+                      isDark
+                        ? "border-rose-500/20 bg-rose-500/5 text-white"
+                        : "border-rose-200 bg-rose-50 text-slate-900"
+                    )}
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Execução #{job.id} · Solicitação #{job.request_id}
+                        </p>
+                        <p className={cn("text-xs", isDark ? "text-zinc-300" : "text-slate-600")}>
+                          {job.action_type ?? "-"} · {job.requested_status ?? "-"}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-rose-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
+                        Congelado
+                      </span>
+                    </div>
+                    <div className="mt-3 text-xs">
+                      <p>
+                        Erro: {job.error_message ?? "-"}
+                        {job.error_status_code
+                          ? ` (status ${job.error_status_code})`
+                          : ""}
+                      </p>
+                      <p>Processadas: {job.processed_issues ?? 0}</p>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl text-xs"
+                        disabled={jobActionLoading === job.id}
+                        onClick={async () => {
+                          setJobActionLoading(job.id);
+                          setJobActionError(null);
+                          try {
+                            const response = await fetch(`/api/actions/jobs/${job.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ retry: true }),
+                            });
+                            const data = await response.json().catch(() => null);
+                            if (!response.ok) {
+                              throw new Error(data?.error || "Não foi possível retomar.");
+                            }
+                            setJobs((prev) =>
+                              prev.map((item) => (item.id === job.id ? data.job : item))
+                            );
+                          } catch (err) {
+                            setJobActionError(
+                              err instanceof Error ? err.message : "Falha ao retomar."
+                            );
+                          } finally {
+                            setJobActionLoading(null);
+                          }
+                        }}
+                      >
+                        Retomar automação
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl text-xs"
+                        disabled={jobActionLoading === job.id}
+                        onClick={async () => {
+                          const notes = window.prompt(
+                            "Informe o motivo da devolução:"
+                          );
+                          if (!notes) return;
+                          setJobActionLoading(job.id);
+                          setJobActionError(null);
+                          try {
+                            const response = await fetch(`/api/actions/jobs/${job.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "return", notes }),
+                            });
+                            const data = await response.json().catch(() => null);
+                            if (!response.ok) {
+                              throw new Error(data?.error || "Não foi possível devolver.");
+                            }
+                            setJobs((prev) =>
+                              prev.map((item) => (item.id === job.id ? data.job : item))
+                            );
+                          } catch (err) {
+                            setJobActionError(
+                              err instanceof Error ? err.message : "Falha ao devolver."
+                            );
+                          } finally {
+                            setJobActionLoading(null);
+                          }
+                        }}
+                      >
+                        Devolver ao solicitante
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl text-xs"
+                        disabled={jobActionLoading === job.id}
+                        onClick={async () => {
+                          const notes = window.prompt(
+                            "Informe a justificativa do cancelamento:"
+                          );
+                          if (!notes) return;
+                          setJobActionLoading(job.id);
+                          setJobActionError(null);
+                          try {
+                            const response = await fetch(`/api/actions/jobs/${job.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "cancel", notes }),
+                            });
+                            const data = await response.json().catch(() => null);
+                            if (!response.ok) {
+                              throw new Error(data?.error || "Não foi possível cancelar.");
+                            }
+                            setJobs((prev) =>
+                              prev.map((item) => (item.id === job.id ? data.job : item))
+                            );
+                          } catch (err) {
+                            setJobActionError(
+                              err instanceof Error ? err.message : "Falha ao cancelar."
+                            );
+                          } finally {
+                            setJobActionLoading(null);
+                          }
+                        }}
+                      >
+                        Cancelar chamado
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
       </div>
     </DashboardShell>
   );

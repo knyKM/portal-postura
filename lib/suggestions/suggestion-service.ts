@@ -20,7 +20,7 @@ type CreateSuggestionInput = {
 };
 
 type ListSuggestionsOptions = {
-  status?: "pending" | "approved";
+  status?: "pending" | "approved" | "completed";
   limit?: number;
 };
 
@@ -91,7 +91,7 @@ export function listSuggestions(
 
 export function updateSuggestionStatus(
   id: number,
-  status: "pending" | "approved",
+  status: "pending" | "approved" | "completed",
   implementationStage?: string
 ): SuggestionRecord {
   const stmt = db.prepare(

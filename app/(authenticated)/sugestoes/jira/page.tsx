@@ -30,7 +30,6 @@ const columns: Array<{
   { key: "aberto", label: "Aberto" },
   { key: "em_analise", label: "Em análise" },
   { key: "em_execucao", label: "Em execução" },
-  { key: "concluido", label: "Concluído" },
 ];
 
 export default function SugestoesJiraPage() {
@@ -46,6 +45,7 @@ export default function SugestoesJiraPage() {
   const [type, setType] = useState<"sugestao" | "problema">("sugestao");
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const grouped = useMemo(() => {
     const map: Record<JiraSuggestion["status"], JiraSuggestion[]> = {
@@ -59,6 +59,15 @@ export default function SugestoesJiraPage() {
     });
     return map;
   }, [items]);
+
+  const activeItems = useMemo(
+    () => items.filter((item) => item.status !== "concluido"),
+    [items]
+  );
+  const completedItems = useMemo(
+    () => items.filter((item) => item.status === "concluido"),
+    [items]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -159,6 +168,35 @@ export default function SugestoesJiraPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao atualizar status.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function handleComplete(id: number) {
+    const confirmed = window.confirm("Confirmar conclusão desta solicitação?");
+    if (!confirmed) return;
+    await handleStatusChange(id, "concluido");
+  }
+
+  async function handleDelete(id: number) {
+    const confirmed = window.confirm("Tem certeza que deseja remover a solicitação?");
+    if (!confirmed) return;
+    setUpdatingId(id);
+    setError(null);
+    try {
+      const response = await fetch("/api/jira-suggestions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao remover solicitação.");
+      }
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao remover solicitação.");
     } finally {
       setUpdatingId(null);
     }
@@ -377,6 +415,27 @@ export default function SugestoesJiraPage() {
                                 </option>
                               ))}
                             </select>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="rounded-full"
+                                onClick={() => handleComplete(item.id)}
+                                disabled={updatingId === item.id}
+                              >
+                                Concluir
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="rounded-full"
+                                onClick={() => handleDelete(item.id)}
+                                disabled={updatingId === item.id}
+                              >
+                                Remover
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -387,6 +446,80 @@ export default function SugestoesJiraPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-6 space-y-3">
+        <div
+          className={cn(
+            "flex items-center justify-between rounded-3xl border px-6 py-4",
+            isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
+          )}
+        >
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+              Histórico
+            </p>
+            <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-600")}>
+              Solicitações concluídas.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="rounded-full"
+            onClick={() => setShowHistory((prev) => !prev)}
+          >
+            {showHistory ? "Recolher" : "Expandir"}
+          </Button>
+        </div>
+        {showHistory && (
+          <div className="grid gap-3">
+            {completedItems.length === 0 ? (
+              <div
+                className={cn(
+                  "rounded-3xl border px-6 py-6 text-center text-sm",
+                  isDark
+                    ? "border-white/10 bg-black/20 text-zinc-400"
+                    : "border-slate-200 bg-white text-slate-600"
+                )}
+              >
+                Nenhuma solicitação concluída.
+              </div>
+            ) : (
+              completedItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "rounded-3xl border p-4 text-sm",
+                    isDark
+                      ? "border-white/10 bg-black/30 text-zinc-100"
+                      : "border-slate-200 bg-white text-slate-800"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                      #{item.id.toString().padStart(3, "0")} •{" "}
+                      {new Date(item.createdAt).toLocaleString("pt-BR")}
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => handleDelete(item.id)}
+                      disabled={updatingId === item.id}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                  <p className="mt-2 font-semibold">{item.title}</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">{item.description}</p>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </DashboardShell>
   );

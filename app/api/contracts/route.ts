@@ -3,9 +3,11 @@ import { getSessionUser } from "@/lib/auth/session";
 import {
   createContract,
   deleteContract,
+  getContractById,
   listContracts,
   updateContract,
 } from "@/lib/contracts/contract-service";
+import { getIntegrationSetting } from "@/lib/settings/integration-settings";
 
 type ContractPayload = {
   id?: number;
@@ -14,6 +16,12 @@ type ContractPayload = {
   owner?: string;
   area?: string | null;
   contractType?: string | null;
+  segment?: string | null;
+  sapContract?: string | null;
+  contractYear?: string | null;
+  contractScope?: string | null;
+  management?: string | null;
+  supplementalUsed?: number | null;
   status?: string;
   startDate?: string;
   endDate?: string;
@@ -70,6 +78,19 @@ export async function POST(request: Request) {
   const area = typeof payload.area === "string" ? payload.area.trim() : "";
   const contractType =
     typeof payload.contractType === "string" ? payload.contractType.trim() : "";
+  const segment = typeof payload.segment === "string" ? payload.segment.trim() : "";
+  const sapContract =
+    typeof payload.sapContract === "string" ? payload.sapContract.trim() : "";
+  const contractYear =
+    typeof payload.contractYear === "string" ? payload.contractYear.trim() : "";
+  const contractScope =
+    typeof payload.contractScope === "string" ? payload.contractScope.trim() : "";
+  const management =
+    typeof payload.management === "string" ? payload.management.trim() : "";
+  const supplementalUsed =
+    typeof payload.supplementalUsed === "number" && Number.isFinite(payload.supplementalUsed)
+      ? Math.max(0, payload.supplementalUsed)
+      : null;
   const status = sanitizeStatus(payload.status);
   const alertDays =
     typeof payload.alertDays === "number" && Number.isFinite(payload.alertDays)
@@ -90,6 +111,27 @@ export async function POST(request: Request) {
     );
   }
 
+  if (supplementalUsed !== null) {
+    const balanceRaw = getIntegrationSetting("contracts_supplemental_balance");
+    const balance = balanceRaw ? Number(balanceRaw) : 0;
+    const totalUsed = listContracts().reduce((acc, contract) => {
+      if (typeof contract.supplemental_used === "number") {
+        return acc + contract.supplemental_used;
+      }
+      return acc;
+    }, 0);
+    const available = Math.max(0, (Number.isFinite(balance) ? balance : 0) - totalUsed);
+    if (supplementalUsed > available) {
+      return NextResponse.json(
+        {
+          error:
+            "Saldo suplementar insuficiente para este contrato. Ajuste o valor ou o saldo disponível.",
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   try {
     const record = createContract({
       title,
@@ -97,6 +139,12 @@ export async function POST(request: Request) {
       owner,
       area: area || null,
       contractType: contractType || null,
+      segment: segment || null,
+      sapContract: sapContract || null,
+      contractYear: contractYear || null,
+      contractScope: contractScope || null,
+      management: management || null,
+      supplementalUsed,
       status,
       startDate,
       endDate,
@@ -143,6 +191,19 @@ export async function PATCH(request: Request) {
   const area = typeof payload.area === "string" ? payload.area.trim() : "";
   const contractType =
     typeof payload.contractType === "string" ? payload.contractType.trim() : "";
+  const segment = typeof payload.segment === "string" ? payload.segment.trim() : "";
+  const sapContract =
+    typeof payload.sapContract === "string" ? payload.sapContract.trim() : "";
+  const contractYear =
+    typeof payload.contractYear === "string" ? payload.contractYear.trim() : "";
+  const contractScope =
+    typeof payload.contractScope === "string" ? payload.contractScope.trim() : "";
+  const management =
+    typeof payload.management === "string" ? payload.management.trim() : "";
+  const supplementalUsed =
+    typeof payload.supplementalUsed === "number" && Number.isFinite(payload.supplementalUsed)
+      ? Math.max(0, payload.supplementalUsed)
+      : null;
   const status = sanitizeStatus(payload.status);
   const alertDays =
     typeof payload.alertDays === "number" && Number.isFinite(payload.alertDays)
@@ -163,6 +224,30 @@ export async function PATCH(request: Request) {
     );
   }
 
+  if (supplementalUsed !== null) {
+    const balanceRaw = getIntegrationSetting("contracts_supplemental_balance");
+    const balance = balanceRaw ? Number(balanceRaw) : 0;
+    const existing = getContractById(id);
+    const currentUsed = typeof existing?.supplemental_used === "number" ? existing.supplemental_used : 0;
+    const totalUsed = listContracts().reduce((acc, contract) => {
+      if (typeof contract.supplemental_used === "number") {
+        return acc + contract.supplemental_used;
+      }
+      return acc;
+    }, 0);
+    const adjustedTotal = Math.max(0, totalUsed - currentUsed);
+    const available = Math.max(0, (Number.isFinite(balance) ? balance : 0) - adjustedTotal);
+    if (supplementalUsed > available) {
+      return NextResponse.json(
+        {
+          error:
+            "Saldo suplementar insuficiente para este contrato. Ajuste o valor ou o saldo disponível.",
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   try {
     const record = updateContract({
       id,
@@ -171,6 +256,12 @@ export async function PATCH(request: Request) {
       owner,
       area: area || null,
       contractType: contractType || null,
+      segment: segment || null,
+      sapContract: sapContract || null,
+      contractYear: contractYear || null,
+      contractScope: contractScope || null,
+      management: management || null,
+      supplementalUsed,
       status,
       startDate,
       endDate,

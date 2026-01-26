@@ -14,6 +14,18 @@ type Vulnerability = {
   id: string;
   title: string;
   severity: "Crítica" | "Alta" | "Média" | "Baixa";
+  description?: string;
+  observations?: string;
+  remediation?: string;
+  affected?: string;
+  score?: number;
+  cve?: string | null;
+  cpe?: string | null;
+  cvss4_base_score?: number | null;
+  cvss4_temporal_score?: number | null;
+  cvss3_base_score?: number | null;
+  cvss3_temporal_score?: number | null;
+  cvss_temporal_score?: number | null;
 };
 
 type Server = {
@@ -21,6 +33,7 @@ type Server = {
   name: string;
   ip: string;
   environment: string;
+  asset_class?: string | null;
 };
 
 type LinkEntry = {
@@ -75,6 +88,11 @@ export default function VulnerabilidadeAtivoPage() {
   const [expandedTimeline, setExpandedTimeline] = useState<Record<string, boolean>>({});
   const [dataError, setDataError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
+  const [assetClass, setAssetClass] = useState("");
+  const [customClass, setCustomClass] = useState("");
+  const [savingClass, setSavingClass] = useState(false);
+  const [classMessage, setClassMessage] = useState<string | null>(null);
+  const [classError, setClassError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -94,6 +112,24 @@ export default function VulnerabilidadeAtivoPage() {
   }, [router]);
 
   const server = servers.find((item) => item.id === params.id);
+  const assetClassOptions = useMemo(
+    () => [
+      "Servidor",
+      "Workstation",
+      "Banco de dados",
+      "Switch",
+      "Firewall",
+      "Roteador",
+      "Impressora",
+      "Storage",
+      "Load Balancer",
+      "Hypervisor",
+      "Appliance",
+      "IoT",
+      "Outro",
+    ],
+    []
+  );
 
   const demoServerOwners: Record<string, Record<string, string>> = useMemo(
     () =>
@@ -114,7 +150,12 @@ export default function VulnerabilidadeAtivoPage() {
     () => [
       {
         title: "Área Proprietária",
-        ids: ["customfield_11702", "customfield_11703", "customfield_11704"],
+        ids: [
+          "customfield_11702",
+          "customfield_11703",
+          "customfield_11704",
+          "customfield_10407",
+        ],
       },
       {
         title: "Área Solucionadora",
@@ -168,10 +209,35 @@ export default function VulnerabilidadeAtivoPage() {
     Baixa: "bg-emerald-500/15 text-emerald-200 border-emerald-500/40",
   };
 
+  function normalizeSeverityLabel(value: string) {
+    const normalized = value.toLowerCase();
+    if (normalized === "critical") return "Crítica";
+    if (normalized === "high") return "Alta";
+    if (normalized === "medium") return "Média";
+    if (normalized === "low") return "Baixa";
+    if (normalized === "crítica") return "Crítica";
+    if (normalized === "alta") return "Alta";
+    if (normalized === "média" || normalized === "media") return "Média";
+    if (normalized === "baixa") return "Baixa";
+    return value as Vulnerability["severity"];
+  }
+
   useEffect(() => {
     if (!authorized) return;
     void fetchData();
   }, [authorized]);
+
+  useEffect(() => {
+    if (!server) return;
+    const current = server.asset_class ?? "Servidor";
+    if (assetClassOptions.includes(current)) {
+      setAssetClass(current);
+      setCustomClass("");
+    } else {
+      setAssetClass("Outro");
+      setCustomClass(current);
+    }
+  }, [server, assetClassOptions]);
 
   if (loading) {
     return (
@@ -265,6 +331,34 @@ export default function VulnerabilidadeAtivoPage() {
       setDataError(err instanceof Error ? err.message : "Falha ao carregar vulnerabilidades.");
     } finally {
       setDataLoading(false);
+    }
+  }
+
+  async function handleSaveClass() {
+    if (!server) return;
+    setSavingClass(true);
+    setClassError(null);
+    setClassMessage(null);
+    try {
+      const value = assetClass === "Outro" ? customClass.trim() : assetClass.trim();
+      if (!value) {
+        throw new Error("Informe a classe do ativo.");
+      }
+      const response = await fetch(`/api/ativos/${server.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetClass: value }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao salvar classe.");
+      }
+      setClassMessage("Classe atualizada com sucesso.");
+      await fetchData();
+    } catch (err) {
+      setClassError(err instanceof Error ? err.message : "Falha ao salvar classe.");
+    } finally {
+      setSavingClass(false);
     }
   }
 
@@ -401,6 +495,66 @@ export default function VulnerabilidadeAtivoPage() {
         </Link>
       </div>
 
+      <Card
+        className={cn(
+          "mt-4 rounded-3xl border p-4",
+          isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
+        )}
+      >
+        <CardContent className="p-0 space-y-3">
+          <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+            Classe do ativo
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={assetClass}
+              onChange={(event) => setAssetClass(event.target.value)}
+              className={cn(
+                "rounded-xl border px-3 py-2 text-sm",
+                isDark
+                  ? "border-white/10 bg-[#050816] text-white"
+                  : "border-slate-200 bg-white text-slate-700"
+              )}
+            >
+              {assetClassOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            {assetClass === "Outro" && (
+              <input
+                value={customClass}
+                onChange={(event) => setCustomClass(event.target.value)}
+                placeholder="Informe a classe do ativo"
+                className={cn(
+                  "rounded-xl border px-3 py-2 text-sm",
+                  isDark
+                    ? "border-white/10 bg-black/40 text-white"
+                    : "border-slate-200 bg-white"
+                )}
+              />
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="rounded-xl text-[11px]"
+              onClick={handleSaveClass}
+              disabled={savingClass}
+            >
+              {savingClass ? "Salvando..." : "Salvar classe"}
+            </Button>
+            {classMessage && (
+              <span className="text-xs text-emerald-300">{classMessage}</span>
+            )}
+            {classError && (
+              <span className="text-xs text-rose-300">{classError}</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {dataError && (
         <div
           className={cn(
@@ -509,10 +663,12 @@ export default function VulnerabilidadeAtivoPage() {
                       <span
                         className={cn(
                           "rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.3em]",
-                          severityBadgeClasses[vuln.severity]
+                          severityBadgeClasses[
+                            normalizeSeverityLabel(vuln.severity)
+                          ]
                         )}
                       >
-                        {vuln.severity}
+                        {normalizeSeverityLabel(vuln.severity)}
                       </span>
                     </div>
                     <div className="mt-2 text-[11px] text-zinc-500">

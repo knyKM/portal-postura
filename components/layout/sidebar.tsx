@@ -31,6 +31,7 @@ import {
   Blocks,
   NotebookPen,
   ShieldCheck,
+  Server,
 } from "lucide-react";
 import { useTheme } from "@/components/theme/theme-provider";
 
@@ -49,6 +50,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/vulnerabilidades/insights" },
   { label: "Vulnerabilidades", icon: ShieldCheck, href: "/vulnerabilidades" },
+  { label: "Ativos", icon: Server, href: "/ativos" },
   { label: "Ações", icon: Workflow, href: "/acoes" },
   {
     label: "Playbooks",

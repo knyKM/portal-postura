@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -20,6 +20,13 @@ type Vulnerability = {
   remediation: string;
   affected: string;
   score: number;
+  cve?: string | null;
+  cpe?: string | null;
+  cvss4_base_score?: number | null;
+  cvss4_temporal_score?: number | null;
+  cvss3_base_score?: number | null;
+  cvss3_temporal_score?: number | null;
+  cvss_temporal_score?: number | null;
 };
 
 type Server = {
@@ -89,10 +96,15 @@ export default function VulnerabilidadesPage() {
   const [retests, setRetests] = useState<RetestRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [selectedServerByVuln, setSelectedServerByVuln] = useState<
-    Record<string, string>
-  >({});
   const [query, setQuery] = useState("");
+  const [queryDraft, setQueryDraft] = useState("");
+  const [showQuerySuggestions, setShowQuerySuggestions] = useState(false);
+  const queryInputRef = useRef<HTMLInputElement | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [viewMode, setViewMode] = useState<"unique" | "by-asset">("unique");
   const [historyModal, setHistoryModal] = useState<{
     vulnerabilityId: string;
     serverId: string;
@@ -143,6 +155,24 @@ export default function VulnerabilidadesPage() {
     Média: "bg-amber-500/15 text-amber-200 border-amber-500/40",
     Baixa: "bg-emerald-500/15 text-emerald-200 border-emerald-500/40",
   };
+
+  function normalizeSeverityLabel(value: string) {
+    const normalized = value.toLowerCase();
+    if (normalized === "critical") return "Crítica";
+    if (normalized === "high") return "Alta";
+    if (normalized === "medium") return "Média";
+    if (normalized === "low") return "Baixa";
+    if (normalized === "crítica") return "Crítica";
+    if (normalized === "alta") return "Alta";
+    if (normalized === "média" || normalized === "media") return "Média";
+    if (normalized === "baixa") return "Baixa";
+    return value as Vulnerability["severity"];
+  }
+
+  function formatScore(value?: number | null) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    return value.toFixed(1);
+  }
 
   function getServerCounters(serverId: string) {
     let open = 0;
@@ -287,11 +317,20 @@ export default function VulnerabilidadesPage() {
     );
   }
 
-  async function fetchData() {
+  async function fetchData(
+    nextPage = page,
+    nextPageSize = pageSize,
+    nextQuery = query,
+    nextMode = viewMode
+  ) {
     setDataLoading(true);
     setDataError(null);
     try {
-      const response = await fetch("/api/vulnerabilidades");
+      const response = await fetch(
+        `/api/vulnerabilidades?page=${nextPage}&limit=${nextPageSize}&mode=${encodeURIComponent(
+          nextMode
+        )}&q=${encodeURIComponent(nextQuery)}`
+      );
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(data?.error || "Falha ao carregar vulnerabilidades.");
@@ -302,6 +341,10 @@ export default function VulnerabilidadesPage() {
       const eventRecords = Array.isArray(data?.events) ? (data.events as LinkEventRecord[]) : [];
       setRetests(Array.isArray(data?.retests) ? (data.retests as RetestRecord[]) : []);
       setLinks(buildLinkMap(linkRecords, eventRecords));
+      setPage(data?.pagination?.page ?? nextPage);
+      setPageSize(data?.pagination?.limit ?? nextPageSize);
+      setTotalCount(data?.pagination?.total ?? 0);
+      setTotalPages(data?.pagination?.totalPages ?? 1);
     } catch (err) {
       setDataError(err instanceof Error ? err.message : "Falha ao carregar vulnerabilidades.");
     } finally {
@@ -311,8 +354,8 @@ export default function VulnerabilidadesPage() {
 
   useEffect(() => {
     if (!authorized) return;
-    void fetchData();
-  }, [authorized]);
+    void fetchData(1, pageSize, query, viewMode);
+  }, [authorized, viewMode]);
 
   function getRetestHistory(vulnId: string, serverId: string) {
     return retests
@@ -409,7 +452,49 @@ export default function VulnerabilidadesPage() {
 
   const parsedQuery = useMemo(() => parseQuery(query), [query]);
 
+  const queryFields = useMemo(
+    () => [
+      "id",
+      "title",
+      "severity",
+      "status",
+      "server",
+      "ip",
+      "env",
+      "score",
+      "occurrences",
+      "open",
+      "resolved",
+      "servers",
+      "sort",
+    ],
+    []
+  );
+
+  function getLastToken(input: string) {
+    const tokens = splitQuery(input);
+    if (tokens.length === 0) return "";
+    return tokens[tokens.length - 1];
+  }
+
+  const querySuggestions = useMemo(() => {
+    const token = getLastToken(queryDraft);
+    if (!token) {
+      return queryFields.map((field) => `${field}:`);
+    }
+    if (token.includes(":") || token.includes(">") || token.includes("<") || token.includes("=")) {
+      return [];
+    }
+    const lower = token.toLowerCase();
+    return queryFields
+      .filter((field) => field.startsWith(lower))
+      .map((field) => `${field}:`);
+  }, [queryDraft, queryFields]);
+
   const filteredVulnerabilities = useMemo(() => {
+    if (query.trim()) {
+      return vulnerabilities;
+    }
     if (!parsedQuery.terms.length && !parsedQuery.filters.length) {
       return vulnerabilities;
     }
@@ -506,35 +591,27 @@ export default function VulnerabilidadesPage() {
         }
       });
     });
-  }, [parsedQuery, vulnerabilities, links, serverById]);
+  }, [parsedQuery, vulnerabilities, links, serverById, query]);
 
-  const filteredServers = useMemo(() => {
-    if (!parsedQuery.terms.length && !parsedQuery.filters.length) {
-      return servers;
-    }
-    return servers.filter((server) => {
-      const baseText = `${server.id} ${server.name} ${server.ip} ${server.environment}`.toLowerCase();
-      const termMatches = parsedQuery.terms.every((term) => baseText.includes(term));
-      if (!termMatches) return false;
-
-      return parsedQuery.filters.every((filter) => {
-        switch (filter.field) {
-          case "server":
-          case "id":
-            return server.id.toLowerCase().includes(filter.value.toLowerCase());
-          case "ip":
-            return server.ip.toLowerCase().includes(filter.value.toLowerCase());
-          case "env":
-          case "environment":
-            return server.environment.toLowerCase().includes(filter.value.toLowerCase());
-          case "name":
-            return server.name.toLowerCase().includes(filter.value.toLowerCase());
-          default:
-            return true;
-        }
-      });
-    });
-  }, [parsedQuery, servers]);
+  const vulnerabilitiesByAsset = useMemo(() => {
+    return filteredVulnerabilities
+      .flatMap((vuln) => {
+        const entries = links[vuln.id] ?? {};
+        return Object.entries(entries)
+          .map(([serverId, entry]) => {
+            const server = serverById[serverId];
+            if (!server) return null;
+            return { vuln, server, entry, key: `${vuln.id}::${serverId}` };
+          })
+          .filter(Boolean) as Array<{
+          vuln: Vulnerability;
+          server: Server;
+          entry: LinkEntry;
+          key: string;
+        }>;
+      })
+      .filter(Boolean);
+  }, [filteredVulnerabilities, links, serverById]);
 
   if (loading) {
     return (
@@ -575,22 +652,152 @@ export default function VulnerabilidadesPage() {
               </p>
             </div>
             <div className="text-xs text-zinc-500">
-              {filteredVulnerabilities.length} resultado
-              {filteredVulnerabilities.length === 1 ? "" : "s"}
+              {filteredVulnerabilities.length} de {totalCount} resultado
+              {totalCount === 1 ? "" : "s"}
             </div>
           </div>
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder='Ex: severity:Alta status:open server:"SRV-01" score>=7'
-            className={cn(
-              "h-11 rounded-2xl text-sm",
-              isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200 bg-white"
-            )}
-          />
+          <form
+            className="flex flex-col gap-2 md:flex-row md:items-start"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const nextQuery = queryDraft.trim();
+              setQuery(nextQuery);
+              setPage(1);
+                          void fetchData(1, pageSize, nextQuery, viewMode);
+              setShowQuerySuggestions(false);
+            }}
+          >
+            <div className="relative flex-1">
+              <Input
+                ref={queryInputRef}
+                value={queryDraft}
+                onChange={(event) => {
+                  setQueryDraft(event.target.value);
+                  setShowQuerySuggestions(true);
+                }}
+                onFocus={() => setShowQuerySuggestions(true)}
+                onBlur={() => {
+                  setTimeout(() => setShowQuerySuggestions(false), 120);
+                }}
+                placeholder='Ex: severity:Alta status:open server:"SRV-01" score>=7'
+                className={cn(
+                  "h-11 rounded-2xl text-sm",
+                  isDark
+                    ? "border-white/10 bg-black/40 text-white"
+                    : "border-slate-200 bg-white"
+                )}
+              />
+              {showQuerySuggestions && querySuggestions.length > 0 && (
+                <div
+                  className={cn(
+                    "absolute left-0 right-0 z-20 mt-2 rounded-2xl border p-2 text-xs shadow-lg",
+                    isDark
+                      ? "border-white/10 bg-[#050816] text-zinc-200"
+                      : "border-slate-200 bg-white text-slate-700"
+                  )}
+                >
+                  <p className="px-2 py-1 text-[10px] uppercase tracking-[0.3em] text-zinc-400">
+                    Autocomplete
+                  </p>
+                  <div className="space-y-1">
+                    {querySuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[11px] font-semibold",
+                          isDark
+                            ? "hover:bg-white/5"
+                            : "hover:bg-slate-100"
+                        )}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          const lastToken = getLastToken(queryDraft);
+                          const prefix = queryDraft.slice(
+                            0,
+                            queryDraft.length - lastToken.length
+                          );
+                          const nextDraft = `${prefix}${suggestion}`;
+                          setQueryDraft(nextDraft);
+                          setShowQuerySuggestions(false);
+                          requestAnimationFrame(() => {
+                            queryInputRef.current?.focus();
+                          });
+                        }}
+                      >
+                        <span>{suggestion}</span>
+                        <span className="text-[10px] text-zinc-400">Campo</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <Button
+              type="submit"
+              className="h-11 rounded-2xl px-5"
+              variant="outline"
+            >
+              Buscar
+            </Button>
+          </form>
+          
           <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
             <span>Campos: id, title, severity, status, server, ip, env, score, occurrences.</span>
-            <span>Exemplos: id:VULN-001, status:corrigida, env:Produção, score&gt;=8.</span>
+            <span>
+              Exemplos: id:VULN-001, status:corrigida, env:Produção, score&gt;=8,
+              sort:open.
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px] text-zinc-400">
+            <span className="uppercase tracking-[0.3em] text-[10px] text-zinc-500">
+              Filtros rápidos
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-[11px]"
+              onClick={() => setQueryDraft("sort:open")}
+            >
+              Maior nº ativos vulneráveis
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-[11px]"
+              onClick={() => setQueryDraft("sort:servers")}
+            >
+              Maior nº ativos (total)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-[11px]"
+              onClick={() => setQueryDraft("sort:occurrences")}
+            >
+              Maior nº ocorrências
+            </Button>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+            <span className="uppercase tracking-[0.3em] text-[10px] text-zinc-500">
+              Visão
+            </span>
+            <Button
+              type="button"
+              variant={viewMode === "unique" ? "default" : "outline"}
+              className="h-8 rounded-xl px-3 text-[11px]"
+              onClick={() => setViewMode("unique")}
+            >
+              Vulnerabilidades únicas
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === "by-asset" ? "default" : "outline"}
+              className="h-8 rounded-xl px-3 text-[11px]"
+              onClick={() => setViewMode("by-asset")}
+            >
+              Por ativo
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -616,15 +823,114 @@ export default function VulnerabilidadesPage() {
             <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
               Nenhuma vulnerabilidade encontrada.
             </p>
+          ) : viewMode === "by-asset" ? (
+            vulnerabilitiesByAsset.length === 0 ? (
+              <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-slate-500")}>
+                Nenhuma vulnerabilidade encontrada.
+              </p>
+            ) : (
+              vulnerabilitiesByAsset.map(({ vuln, server, entry, key }) => (
+                <Card
+                  key={key}
+                  className={cn(
+                    "rounded-3xl border p-4 shadow-[0_20px_60px_rgba(88,28,135,0.15)]",
+                    isDark
+                      ? "border-white/5 bg-[#050816]/80 text-white"
+                      : "border-slate-200 bg-white text-slate-900"
+                  )}
+                >
+                  <CardContent className="space-y-4 p-0">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.35em]",
+                            severityBadgeClasses[
+                              normalizeSeverityLabel(vuln.severity)
+                            ]
+                          )}
+                        >
+                          {normalizeSeverityLabel(vuln.severity)}
+                        </span>
+                        <h3 className="mt-2 text-lg font-semibold">{vuln.title}</h3>
+                        <p className="mt-1 text-sm text-zinc-400">
+                          {server.name} · {server.environment} · {server.ip}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+                          <span>
+                            Status: {entry.status === "active" ? "Aberta" : "Corrigida"}
+                          </span>
+                          <span>•</span>
+                          <span>Ocorrências {entry.occurrences}</span>
+                          <span>•</span>
+                          <span>Correções {entry.resolvedCount}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/vulnerabilidades/${vuln.id}`}
+                          className={cn(
+                            "rounded-xl border px-3 py-2 text-[11px] font-semibold",
+                            isDark
+                              ? "border-white/10 text-zinc-200"
+                              : "border-slate-200 text-slate-700"
+                          )}
+                        >
+                          Ver vulnerabilidade
+                        </Link>
+                        <Link
+                          href={`/vulnerabilidades/ativos/${server.id}`}
+                          className={cn(
+                            "rounded-xl border px-3 py-2 text-[11px] font-semibold",
+                            isDark
+                              ? "border-white/10 text-zinc-200"
+                              : "border-slate-200 text-slate-700"
+                          )}
+                        >
+                          Ver ativo
+                        </Link>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border px-4 py-3 text-xs">
+                      <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">
+                        Primeira detecção
+                      </p>
+                      <p className="mt-2 text-sm font-semibold">
+                        {formatDate(entry.firstDetectedAt)}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )
           ) : (
             filteredVulnerabilities.map((vuln) => {
             const entries = links[vuln.id] ?? {};
-            const activeServers = Object.entries(entries).filter(
-              ([, entry]) => entry.status === "active"
-            );
-            const resolvedServers = Object.entries(entries).filter(
-              ([, entry]) => entry.status === "resolved"
-            );
+            const linkedServers = Object.entries(entries)
+              .map(([serverId, entry]) => {
+                const server = serverById[serverId];
+                if (!server) return null;
+                return { serverId, server, entry };
+              })
+              .filter(Boolean) as Array<{
+              serverId: string;
+              server: Server;
+              entry: LinkEntry;
+            }>;
+            const activeCount = linkedServers.filter(
+              ({ entry }) => entry.status === "active"
+            ).length;
+            const resolvedCount = linkedServers.filter(
+              ({ entry }) => entry.status === "resolved"
+            ).length;
+            const retestRequestedCount = linkedServers.reduce((acc, item) => {
+              const latest = getRetestHistory(vuln.id, item.serverId).at(-1);
+              return latest?.status === "requested" ? acc + 1 : acc;
+            }, 0);
+            const retestFailedCount = linkedServers.reduce((acc, item) => {
+              const latest = getRetestHistory(vuln.id, item.serverId).at(-1);
+              return latest?.status === "failed" ? acc + 1 : acc;
+            }, 0);
             return (
               <Card
                 key={vuln.id}
@@ -641,56 +947,52 @@ export default function VulnerabilidadesPage() {
                       <span
                         className={cn(
                           "inline-flex items-center rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.35em]",
-                          severityBadgeClasses[vuln.severity]
+                          severityBadgeClasses[
+                            normalizeSeverityLabel(vuln.severity)
+                          ]
                         )}
                       >
-                        {vuln.severity}
+                        {normalizeSeverityLabel(vuln.severity)}
                       </span>
                       <h3 className="mt-2 text-lg font-semibold">{vuln.title}</h3>
-                      <p className="mt-1 text-sm text-zinc-400 max-w-2xl">
+                      <p className="mt-1 max-w-2xl text-sm text-zinc-400 line-clamp-1">
                         {vuln.description}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-500">
                         <span>Score {vuln.score.toFixed(1)}</span>
                         <span>•</span>
                         <span>{vuln.affected}</span>
+                        {formatScore(vuln.cvss4_base_score) && (
+                          <>
+                            <span>•</span>
+                            <span>CVSS4 {formatScore(vuln.cvss4_base_score)}</span>
+                          </>
+                        )}
+                        {formatScore(vuln.cvss3_base_score) && (
+                          <>
+                            <span>•</span>
+                            <span>CVSS3 {formatScore(vuln.cvss3_base_score)}</span>
+                          </>
+                        )}
+                        {formatScore(vuln.cvss_temporal_score) && (
+                          <>
+                            <span>•</span>
+                            <span>Temporal {formatScore(vuln.cvss_temporal_score)}</span>
+                          </>
+                        )}
                       </div>
+                      {(vuln.cve || vuln.cpe) && (
+                        <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                          {vuln.cve && (
+                            <p className="line-clamp-1">CVE: {vuln.cve}</p>
+                          )}
+                          {vuln.cpe && (
+                            <p className="line-clamp-1">CPE: {vuln.cpe}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          value={selectedServerByVuln[vuln.id] ?? ""}
-                          onChange={(event) =>
-                            setSelectedServerByVuln((prev) => ({
-                              ...prev,
-                              [vuln.id]: event.target.value,
-                            }))
-                          }
-                        className={cn(
-                          "rounded-xl border px-3 py-2 text-xs",
-                          isDark
-                            ? "border-white/10 bg-[#050816] text-white"
-                            : "border-slate-200 bg-white text-slate-700"
-                        )}
-                      >
-                        <option value="">Selecionar servidor</option>
-                        {servers.map((server) => (
-                          <option key={server.id} value={server.id}>
-                            {server.name} · {server.ip}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={() => {
-                          const serverId = selectedServerByVuln[vuln.id];
-                          if (!serverId) return;
-                          ensureEntry(vuln.id, serverId);
-                        }}
-                      >
-                        Vincular ativo
-                      </Button>
                       <Link
                         href={`/vulnerabilidades/${vuln.id}`}
                         className={cn(
@@ -705,237 +1007,58 @@ export default function VulnerabilidadesPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div
+                      className={cn(
+                        "rounded-2xl border px-4 py-3 text-xs",
+                        isDark
+                          ? "border-white/10 bg-white/5 text-zinc-200"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
+                      )}
+                    >
+                      <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">
                         Ativos vulneráveis
                       </p>
-                      {activeServers.length === 0 ? (
-                        <p className="mt-2 text-xs text-zinc-500">
-                          Nenhum ativo vulnerável no momento.
-                        </p>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {activeServers.map(([serverId, entry]) => {
-                            const server = serverById[serverId];
-                            if (!server) return null;
-                            const retestHistory = getRetestHistory(vuln.id, serverId);
-                            const latestRetest = retestHistory.at(-1);
-                            return (
-                              <div
-                                key={`${vuln.id}-${serverId}`}
-                                className={cn(
-                                  "rounded-3xl border px-4 py-4 text-xs shadow-lg",
-                                  isDark
-                                    ? "border-white/10 bg-gradient-to-br from-[#0b1024] via-[#070b18] to-[#050814] text-zinc-200"
-                                    : "border-slate-200 bg-white text-slate-700"
-                                )}
-                              >
-                                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                                  <div className="space-y-2">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <p className="text-sm font-semibold text-white">
-                                        {server.name}
-                                      </p>
-                                      <span
-                                        className={cn(
-                                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
-                                          isDark
-                                            ? "border-white/10 text-zinc-300"
-                                            : "border-slate-200 text-slate-600"
-                                        )}
-                                      >
-                                        {server.ip}
-                                      </span>
-                                      {latestRetest && (
-                                        <span
-                                          className={cn(
-                                            "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]",
-                                            latestRetest.status === "passed"
-                                              ? "bg-emerald-500/15 text-emerald-200"
-                                              : latestRetest.status === "requested"
-                                              ? "bg-amber-500/15 text-amber-200"
-                                              : "bg-rose-500/15 text-rose-200"
-                                          )}
-                                        >
-                                          Reteste {latestRetest.status === "requested"
-                                            ? "Solicitado"
-                                            : latestRetest.status === "passed"
-                                            ? "OK"
-                                            : "Falhou"}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="grid gap-1 text-[11px] text-zinc-500">
-                                      <p>
-                                        {server.environment} · {entry.occurrences} ocorrência
-                                        {entry.occurrences > 1 ? "s" : ""}
-                                      </p>
-                                      <p>
-                                        Última ocorrência: {formatDate(entry.occurrenceDates.at(-1))}
-                                      </p>
-                                      {latestRetest && (
-                                        <p>
-                                          Reteste em{" "}
-                                          {formatDate(
-                                            latestRetest.retested_at ?? latestRetest.requested_at
-                                          )}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="rounded-xl text-[11px]"
-                                      onClick={() => resolveEntry(vuln.id, serverId)}
-                                    >
-                                      Marcar corrigida
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="rounded-xl text-[11px]"
-                                      onClick={() => requestRetest(vuln.id, serverId)}
-                                    >
-                                      Enviar para reteste
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="rounded-xl text-[11px]"
-                                      onClick={() => completeRetest(vuln.id, serverId, "passed")}
-                                    >
-                                      Reteste OK
-                                    </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl text-[11px]"
-                                    onClick={() => completeRetest(vuln.id, serverId, "failed")}
-                                  >
-                                    Reteste falhou
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl text-[11px]"
-                                    onClick={() =>
-                                      setHistoryModal({
-                                        vulnerabilityId: vuln.id,
-                                        serverId,
-                                      })
-                                    }
-                                  >
-                                    Ver ocorrências
-                                  </Button>
-                                  <Link
-                                    href={`/vulnerabilidades/ativos/${serverId}`}
-                                    className={cn(
-                                      "flex items-center justify-center rounded-xl border px-3 py-2 text-[11px] font-semibold",
-                                        isDark
-                                          ? "border-white/10 text-zinc-200"
-                                          : "border-slate-200 text-slate-700"
-                                      )}
-                                    >
-                                    Ver ativo
-                                  </Link>
-                                </div>
-                              </div>
-                            </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <p className="mt-2 text-2xl font-semibold">{activeCount}</p>
                     </div>
-
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                        Histórico corrigido
-                      </p>
-                      {resolvedServers.length === 0 ? (
-                        <p className="mt-2 text-xs text-zinc-500">
-                          Nenhuma correção registrada.
-                        </p>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {resolvedServers.map(([serverId, entry]) => {
-                            const server = serverById[serverId];
-                            if (!server) return null;
-                            return (
-                              <div
-                                key={`${vuln.id}-${serverId}-resolved`}
-                                className={cn(
-                                  "rounded-2xl border px-3 py-2 text-xs",
-                                  isDark
-                                    ? "border-white/10 bg-white/5 text-zinc-200"
-                                    : "border-slate-200 bg-slate-50 text-slate-700"
-                                )}
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div>
-                                    <p className="font-semibold">
-                                      {server.name} · {server.ip}
-                                    </p>
-                                    <p className="text-[11px] text-zinc-500">
-                                      Corrigida {entry.resolvedCount} vez
-                                      {entry.resolvedCount > 1 ? "es" : ""} ·{" "}
-                                      {entry.occurrences} ocorrência
-                                      {entry.occurrences > 1 ? "s" : ""}
-                                    </p>
-                                    <p className="text-[11px] text-zinc-500">
-                                      Última correção: {formatDate(entry.resolvedDates.at(-1))}
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="rounded-xl text-[11px]"
-                                      onClick={() =>
-                                        setHistoryModal({
-                                          vulnerabilityId: vuln.id,
-                                          serverId,
-                                        })
-                                      }
-                                    >
-                                      Ver ocorrências
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="rounded-xl text-[11px]"
-                                      onClick={() => ensureEntry(vuln.id, serverId)}
-                                    >
-                                      Reabrir
-                                    </Button>
-                                    <Link
-                                      href={`/vulnerabilidades/ativos/${serverId}`}
-                                      className={cn(
-                                        "rounded-xl border px-3 py-2 text-[11px] font-semibold",
-                                        isDark
-                                          ? "border-white/10 text-zinc-200"
-                                          : "border-slate-200 text-slate-700"
-                                      )}
-                                    >
-                                      Ver ativo
-                                    </Link>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                    <div
+                      className={cn(
+                        "rounded-2xl border px-4 py-3 text-xs",
+                        isDark
+                          ? "border-white/10 bg-white/5 text-zinc-200"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
                       )}
+                    >
+                      <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">
+                        Ativos corrigidos
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold">{resolvedCount}</p>
+                    </div>
+                    <div
+                      className={cn(
+                        "rounded-2xl border px-4 py-3 text-xs",
+                        isDark
+                          ? "border-white/10 bg-white/5 text-zinc-200"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
+                      )}
+                    >
+                      <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">
+                        Em reteste
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold">{retestRequestedCount}</p>
+                    </div>
+                    <div
+                      className={cn(
+                        "rounded-2xl border px-4 py-3 text-xs",
+                        isDark
+                          ? "border-white/10 bg-white/5 text-zinc-200"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
+                      )}
+                    >
+                      <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">
+                        Reteste falhou
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold">{retestFailedCount}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -945,57 +1068,77 @@ export default function VulnerabilidadesPage() {
           )}
         </div>
 
-        <Card
-          className={cn(
-            "rounded-3xl border p-4",
-            isDark
-              ? "border-white/5 bg-[#050816]/80 text-white"
-              : "border-slate-200 bg-white text-slate-900"
-          )}
-        >
-          <CardContent className="p-0 space-y-3">
-            <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
-              Servidores de teste
-            </p>
-            <h3 className="text-lg font-semibold">
-              Catálogo de ativos ({filteredServers.length})
-            </h3>
-            <p className="text-sm text-zinc-400">
-              Use estes servidores para simular vínculo, correção e reabertura.
-            </p>
-            <div className="mt-3 space-y-2">
-              {filteredServers.map((server) => (
-                <div
-                  key={server.id}
+        <div className="space-y-4">
+          <Card
+            className={cn(
+              "rounded-3xl border p-4",
+              isDark
+                ? "border-white/5 bg-[#050816]/80 text-white"
+                : "border-slate-200 bg-white text-slate-900"
+            )}
+          >
+            <CardContent className="p-0 space-y-3">
+              <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                Paginação
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                <span>Itens por página</span>
+                <select
+                  value={pageSize}
+                  onChange={(event) => {
+                    const nextSize = Number(event.target.value);
+                    setPage(1);
+                    setPageSize(nextSize);
+                    void fetchData(1, nextSize, query, viewMode);
+                  }}
                   className={cn(
-                    "rounded-2xl border px-3 py-2 text-xs",
+                    "rounded-xl border px-3 py-2 text-xs",
                     isDark
-                      ? "border-white/10 bg-white/5 text-zinc-200"
-                      : "border-slate-200 bg-slate-50 text-slate-700"
+                      ? "border-white/10 bg-[#050816] text-white"
+                      : "border-slate-200 bg-white text-slate-700"
                   )}
                 >
-                  <p className="font-semibold">
-                    {server.name} · {server.ip}
-                  </p>
-                  <p className="text-[11px] text-zinc-500">{server.environment}</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Link
-                      href={`/vulnerabilidades/ativos/${server.id}`}
-                      className={cn(
-                        "rounded-xl border px-3 py-2 text-[11px] font-semibold",
-                        isDark
-                          ? "border-white/10 text-zinc-200"
-                          : "border-slate-200 text-slate-700"
-                      )}
-                    >
-                      Ver ativo
-                    </Link>
-                  </div>
+                  {[10, 20, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                <span>
+                  Página {page} de {totalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 rounded-xl px-3"
+                    onClick={() => {
+                      const nextPage = Math.max(1, page - 1);
+                      setPage(nextPage);
+                      void fetchData(nextPage, pageSize, query, viewMode);
+                    }}
+                    disabled={page <= 1 || dataLoading}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 rounded-xl px-3"
+                    onClick={() => {
+                      const nextPage = Math.min(totalPages, page + 1);
+                      setPage(nextPage);
+                      void fetchData(nextPage, pageSize, query, viewMode);
+                    }}
+                    disabled={page >= totalPages || dataLoading}
+                  >
+                    Próxima
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {historyModalData && (

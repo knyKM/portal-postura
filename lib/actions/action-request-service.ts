@@ -16,6 +16,7 @@ export type ActionRequestRecord = {
   approved_at: string | null;
   approved_by: string | null;
   audit_notes: string | null;
+  error_status_code: number | null;
 };
 
 export type ActionRequestEventRecord = {
@@ -293,18 +294,21 @@ export function updateActionRequestExecutionStatus({
   id,
   status,
   errorMessage,
+  errorStatusCode,
 }: {
   id: number;
-  status: "queued" | "running" | "paused" | "completed" | "failed";
+  status: "queued" | "running" | "paused" | "completed" | "failed" | "frozen";
   errorMessage?: string | null;
+  errorStatusCode?: number | null;
 }) {
   const stmt = db.prepare(
     `UPDATE action_requests
      SET status = ?,
-         audit_notes = COALESCE(?, audit_notes)
+         audit_notes = COALESCE(?, audit_notes),
+         error_status_code = COALESCE(?, error_status_code)
      WHERE id = ?`
   );
-  stmt.run(status, errorMessage ?? null, id);
+  stmt.run(status, errorMessage ?? null, errorStatusCode ?? null, id);
   createActionRequestEvent({
     requestId: id,
     type: status,

@@ -458,6 +458,10 @@ export default function MetasPage() {
       setError("Preencha todos os campos obrigatórios da meta.");
       return;
     }
+    if (startMonth > endMonth) {
+      setError("A data de início não pode ser superior à data de fim.");
+      return;
+    }
     setSavingGoal(true);
     try {
       const response = await fetch("/api/goals", {
@@ -521,6 +525,10 @@ export default function MetasPage() {
       parsedTargetValue <= 0
     ) {
       setError("Preencha todos os campos obrigatórios da meta.");
+      return;
+    }
+    if (startMonth > endMonth) {
+      setError("A data de início não pode ser superior à data de fim.");
       return;
     }
     setSavingGoal(true);

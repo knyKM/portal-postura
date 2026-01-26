@@ -73,3 +73,7 @@ export function updateJiraSuggestionStatus(
     .get(status, now, id);
   return record;
 }
+
+export function deleteJiraSuggestion(id: number) {
+  db.prepare("DELETE FROM jira_suggestions WHERE id = ?").run(id);
+}

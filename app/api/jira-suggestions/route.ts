@@ -4,6 +4,7 @@ import {
   createJiraSuggestion,
   listJiraSuggestions,
   updateJiraSuggestionStatus,
+  deleteJiraSuggestion,
   JiraSuggestionRecord,
 } from "@/lib/suggestions/jira-suggestion-service";
 
@@ -138,6 +139,36 @@ export async function PATCH(request: Request) {
     console.error("[jira-suggestions:PATCH]", error);
     return NextResponse.json(
       { error: "Não foi possível atualizar a solicitação." },
+      { status: 500 }
+    );
+  }
+}
+
+type DeletePayload = {
+  id?: number;
+};
+
+export async function DELETE(request: Request) {
+  const session = await getSessionUser(request.headers.get("cookie") ?? undefined);
+  if (!session) {
+    return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
+  }
+
+  const payload = (await request.json().catch(() => null)) as DeletePayload | null;
+  const idParam = payload?.id ?? Number(new URL(request.url).searchParams.get("id"));
+  const id = Number(idParam);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "Informe um id válido." }, { status: 400 });
+  }
+
+  try {
+    deleteJiraSuggestion(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[jira-suggestions:DELETE]", error);
+    return NextResponse.json(
+      { error: "Não foi possível remover a solicitação." },
       { status: 500 }
     );
   }

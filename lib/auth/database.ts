@@ -126,6 +126,7 @@ db.exec(`
     requester_email TEXT,
     requester_name TEXT,
     status TEXT DEFAULT 'pending',
+    error_status_code INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     approved_at TEXT,
     approved_by TEXT,
@@ -161,11 +162,21 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS supplemental_balance_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    amount REAL NOT NULL,
+    description TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS action_execution_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'queued',
     error_message TEXT,
+    error_status_code INTEGER,
     total_issues INTEGER,
     processed_issues INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime')),
@@ -237,12 +248,21 @@ if (!hasMessageSenderRole) {
 const actionJobTableInfo = db
   .prepare("PRAGMA table_info(action_execution_jobs)")
   .all() as TableInfoRow[];
+const actionRequestTableInfo = db
+  .prepare("PRAGMA table_info(action_requests)")
+  .all() as TableInfoRow[];
 
 const hasTotalIssuesColumn = actionJobTableInfo.some(
   (column) => column.name === "total_issues"
 );
 const hasProcessedIssuesColumn = actionJobTableInfo.some(
   (column) => column.name === "processed_issues"
+);
+const hasJobErrorStatusCodeColumn = actionJobTableInfo.some(
+  (column) => column.name === "error_status_code"
+);
+const hasRequestErrorStatusCodeColumn = actionRequestTableInfo.some(
+  (column) => column.name === "error_status_code"
 );
 
 if (!hasTotalIssuesColumn) {
@@ -251,6 +271,12 @@ if (!hasTotalIssuesColumn) {
 
 if (!hasProcessedIssuesColumn) {
   db.exec("ALTER TABLE action_execution_jobs ADD COLUMN processed_issues INTEGER");
+}
+if (!hasJobErrorStatusCodeColumn) {
+  db.exec("ALTER TABLE action_execution_jobs ADD COLUMN error_status_code INTEGER");
+}
+if (!hasRequestErrorStatusCodeColumn) {
+  db.exec("ALTER TABLE action_requests ADD COLUMN error_status_code INTEGER");
 }
 
 db.exec(`
@@ -440,6 +466,19 @@ db.exec(`
     source TEXT DEFAULT 'manual',
     external_id TEXT,
     last_synced_at TEXT,
+    plugin_publication_date TEXT,
+    patch_publication_date TEXT,
+    intel_type TEXT,
+    plugin_type TEXT,
+    cve TEXT,
+    cpe TEXT,
+    cvss4_base_score REAL,
+    cvss4_temporal_score REAL,
+    cvss3_base_score REAL,
+    cvss3_temporal_score REAL,
+    cvss_temporal_score REAL,
+    vpr_score REAL,
+    vpr_updated TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
@@ -450,12 +489,16 @@ db.exec(`
     name TEXT NOT NULL,
     ip TEXT NOT NULL,
     environment TEXT,
+    asset_class TEXT DEFAULT 'Servidor',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
 const vulnerabilityTableInfo = db
   .prepare("PRAGMA table_info(vulnerabilities)")
+  .all() as TableInfoRow[];
+const vulnerabilityServersInfo = db
+  .prepare("PRAGMA table_info(vulnerability_servers)")
   .all() as TableInfoRow[];
 
 const hasVulnSourceColumn = vulnerabilityTableInfo.some(
@@ -467,6 +510,41 @@ const hasVulnExternalIdColumn = vulnerabilityTableInfo.some(
 const hasVulnLastSyncedAtColumn = vulnerabilityTableInfo.some(
   (column) => column.name === "last_synced_at"
 );
+const hasVulnPluginPublicationDate = vulnerabilityTableInfo.some(
+  (column) => column.name === "plugin_publication_date"
+);
+const hasVulnPatchPublicationDate = vulnerabilityTableInfo.some(
+  (column) => column.name === "patch_publication_date"
+);
+const hasVulnIntelType = vulnerabilityTableInfo.some(
+  (column) => column.name === "intel_type"
+);
+const hasVulnPluginType = vulnerabilityTableInfo.some(
+  (column) => column.name === "plugin_type"
+);
+const hasVulnCve = vulnerabilityTableInfo.some((column) => column.name === "cve");
+const hasVulnCpe = vulnerabilityTableInfo.some((column) => column.name === "cpe");
+const hasVulnCvss4Base = vulnerabilityTableInfo.some(
+  (column) => column.name === "cvss4_base_score"
+);
+const hasVulnCvss4Temporal = vulnerabilityTableInfo.some(
+  (column) => column.name === "cvss4_temporal_score"
+);
+const hasVulnCvss3Base = vulnerabilityTableInfo.some(
+  (column) => column.name === "cvss3_base_score"
+);
+const hasVulnCvss3Temporal = vulnerabilityTableInfo.some(
+  (column) => column.name === "cvss3_temporal_score"
+);
+const hasVulnCvssTemporal = vulnerabilityTableInfo.some(
+  (column) => column.name === "cvss_temporal_score"
+);
+const hasVulnVprScore = vulnerabilityTableInfo.some(
+  (column) => column.name === "vpr_score"
+);
+const hasVulnVprUpdated = vulnerabilityTableInfo.some(
+  (column) => column.name === "vpr_updated"
+);
 
 if (!hasVulnSourceColumn) {
   db.exec("ALTER TABLE vulnerabilities ADD COLUMN source TEXT DEFAULT 'manual'");
@@ -476,6 +554,52 @@ if (!hasVulnExternalIdColumn) {
 }
 if (!hasVulnLastSyncedAtColumn) {
   db.exec("ALTER TABLE vulnerabilities ADD COLUMN last_synced_at TEXT");
+}
+if (!hasVulnPluginPublicationDate) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN plugin_publication_date TEXT");
+}
+if (!hasVulnPatchPublicationDate) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN patch_publication_date TEXT");
+}
+if (!hasVulnIntelType) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN intel_type TEXT");
+}
+if (!hasVulnPluginType) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN plugin_type TEXT");
+}
+if (!hasVulnCve) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN cve TEXT");
+}
+if (!hasVulnCpe) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN cpe TEXT");
+}
+if (!hasVulnCvss4Base) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN cvss4_base_score REAL");
+}
+if (!hasVulnCvss4Temporal) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN cvss4_temporal_score REAL");
+}
+if (!hasVulnCvss3Base) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN cvss3_base_score REAL");
+}
+if (!hasVulnCvss3Temporal) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN cvss3_temporal_score REAL");
+}
+if (!hasVulnCvssTemporal) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN cvss_temporal_score REAL");
+}
+if (!hasVulnVprScore) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN vpr_score REAL");
+}
+if (!hasVulnVprUpdated) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN vpr_updated TEXT");
+}
+
+const hasAssetClassColumn = vulnerabilityServersInfo.some(
+  (column) => column.name === "asset_class"
+);
+if (!hasAssetClassColumn) {
+  db.exec("ALTER TABLE vulnerability_servers ADD COLUMN asset_class TEXT DEFAULT 'Servidor'");
 }
 
 db.exec(`
@@ -573,6 +697,11 @@ db.exec(`
     owner TEXT NOT NULL,
     area TEXT,
     contract_type TEXT,
+    segment TEXT,
+    sap_contract TEXT,
+    contract_year TEXT,
+    contract_scope TEXT,
+    management TEXT,
     status TEXT NOT NULL DEFAULT 'ativo',
     start_date TEXT NOT NULL,
     end_date TEXT NOT NULL,
@@ -590,6 +719,36 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_contracts_status_end
   ON contracts (status, end_date);
 `);
+
+const contractsTableInfo = db
+  .prepare("PRAGMA table_info(contracts)")
+  .all() as TableInfoRow[];
+const hasContractSegment = contractsTableInfo.some((column) => column.name === "segment");
+const hasContractSap = contractsTableInfo.some((column) => column.name === "sap_contract");
+const hasContractYear = contractsTableInfo.some((column) => column.name === "contract_year");
+const hasContractScope = contractsTableInfo.some((column) => column.name === "contract_scope");
+const hasContractManagement = contractsTableInfo.some((column) => column.name === "management");
+const hasContractSupplementalUsed = contractsTableInfo.some(
+  (column) => column.name === "supplemental_used"
+);
+if (!hasContractSegment) {
+  db.exec("ALTER TABLE contracts ADD COLUMN segment TEXT");
+}
+if (!hasContractSap) {
+  db.exec("ALTER TABLE contracts ADD COLUMN sap_contract TEXT");
+}
+if (!hasContractYear) {
+  db.exec("ALTER TABLE contracts ADD COLUMN contract_year TEXT");
+}
+if (!hasContractScope) {
+  db.exec("ALTER TABLE contracts ADD COLUMN contract_scope TEXT");
+}
+if (!hasContractManagement) {
+  db.exec("ALTER TABLE contracts ADD COLUMN management TEXT");
+}
+if (!hasContractSupplementalUsed) {
+  db.exec("ALTER TABLE contracts ADD COLUMN supplemental_used REAL");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS jira_export_jobs (

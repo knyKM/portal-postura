@@ -16,6 +16,7 @@ import {
   Trash2,
   PlayCircle,
   Zap,
+  RefreshCw,
 } from "lucide-react";
 import { ScriptPickerModal } from "@/components/playbooks/script-picker-modal";
 
@@ -72,6 +73,28 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
   const [tenableSyncing, setTenableSyncing] = useState(false);
   const [tenableSyncMessage, setTenableSyncMessage] = useState<string | null>(null);
   const [tenableSyncError, setTenableSyncError] = useState<string | null>(null);
+  const [tenablePaused, setTenablePaused] = useState(false);
+  const [tenablePauseLoading, setTenablePauseLoading] = useState(false);
+  const [tenablePauseError, setTenablePauseError] = useState<string | null>(null);
+  const [tenableLogs, setTenableLogs] = useState<
+    {
+      createdAt?: string;
+      timestamp: string;
+      message: string;
+      level?: "info" | "warning" | "error";
+    }[]
+  >([]);
+  const [tenableJobSnapshot, setTenableJobSnapshot] = useState<{
+    status: string;
+    pendingIssues: number;
+    lastRun: string;
+    duration: string;
+  } | null>(null);
+  const [tenableLogLoading, setTenableLogLoading] = useState(false);
+  const [tenableLogModalOpen, setTenableLogModalOpen] = useState(false);
+  const [tenableLogPage, setTenableLogPage] = useState(1);
+  const tenableIsRunning = tenableJobSnapshot?.status === "running";
+  const [tenableFullResyncOpen, setTenableFullResyncOpen] = useState(false);
 
   const tenableTarget = useMemo(() => {
     const signature = `${playbook?.name ?? ""} ${playbook?.scriptPath ?? ""}`.toLowerCase();
@@ -82,6 +105,10 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
   }, [playbook?.name, playbook?.scriptPath]);
 
   const hasTenableAutomation = Boolean(tenableTarget);
+  const tenableJobId = useMemo(() => {
+    if (!tenableTarget) return null;
+    return tenableTarget === "plugins" ? "tenable-plugins-sync" : "tenable-scans-sync";
+  }, [tenableTarget]);
 
   useEffect(() => {
     if (!playbookId) return;
@@ -170,6 +197,37 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
     return () => controller.abort();
   }, [hasTenableAutomation, isAdmin, tenableTarget]);
 
+  useEffect(() => {
+    if (!hasTenableAutomation || !isAdmin || !tenableTarget) return;
+    const controller = new AbortController();
+    async function fetchPaused() {
+      setTenablePauseLoading(true);
+      setTenablePauseError(null);
+      try {
+        const response = await fetch(
+          `/api/integrations/tenable/pause?target=${tenableTarget}`,
+          { signal: controller.signal }
+        );
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Não foi possível consultar pausa.");
+        }
+        setTenablePaused(Boolean(data?.paused));
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setTenablePauseError(
+          err instanceof Error ? err.message : "Falha ao consultar pausa."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setTenablePauseLoading(false);
+        }
+      }
+    }
+    fetchPaused();
+    return () => controller.abort();
+  }, [hasTenableAutomation, isAdmin, tenableTarget]);
+
   async function handleTenableAutoToggle(nextEnabled: boolean) {
     if (!tenableTarget) return;
     setTenableAutoLoading(true);
@@ -235,8 +293,133 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
       );
     } finally {
       setTenableSyncing(false);
+      fetchTenableLogs();
     }
   }
+
+  async function handleTenablePauseToggle(nextPaused: boolean) {
+    if (!tenableTarget) return;
+    setTenablePauseLoading(true);
+    setTenablePauseError(null);
+    try {
+      const response = await fetch("/api/integrations/tenable/pause", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ target: tenableTarget, paused: nextPaused }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível atualizar a pausa.");
+      }
+      setTenablePaused(Boolean(data?.paused));
+      setTenableSyncMessage(
+        nextPaused
+          ? "Sincronização pausada pelo administrador."
+          : "Sincronização retomada."
+      );
+    } catch (err) {
+      setTenablePauseError(
+        err instanceof Error ? err.message : "Falha ao atualizar a pausa."
+      );
+    } finally {
+      setTenablePauseLoading(false);
+    }
+  }
+
+  async function fetchTenableLogs() {
+    if (!tenableJobId) return;
+    setTenableLogLoading(true);
+    try {
+      const response = await fetch("/api/auditoria", { cache: "no-store" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao carregar logs.");
+      }
+      const job =
+        Array.isArray(data?.jobs) &&
+        data.jobs.find((item: { id?: string }) => item?.id === tenableJobId);
+      setTenableJobSnapshot(
+        job
+          ? {
+              status: job.status ?? "pending",
+              pendingIssues: Number(job.pendingIssues ?? 0),
+              lastRun: job.lastRun ?? "—",
+              duration: job.duration ?? "—",
+            }
+          : null
+      );
+      const logs =
+        Array.isArray(data?.logs) && data.logs.length > 0
+          ? data.logs
+              .filter((log: { jobId?: string }) => log?.jobId === tenableJobId)
+              .map(
+                (log: {
+                  timestamp?: string;
+                  message?: string;
+                  level?: string;
+                  createdAt?: string;
+                }) => ({
+                  createdAt: log.createdAt,
+                  timestamp: log.timestamp ?? "",
+                  message: log.message ?? "",
+                  level: log.level as "info" | "warning" | "error" | undefined,
+                })
+              )
+          : [];
+      setTenableLogs(logs);
+      setTenableLogPage(1);
+    } catch (err) {
+      setTenableSyncError(
+        err instanceof Error ? err.message : "Falha ao carregar logs."
+      );
+    } finally {
+      setTenableLogLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!hasTenableAutomation) return;
+    let alive = true;
+    const run = async () => {
+      if (!alive) return;
+      await fetchTenableLogs();
+    };
+    run();
+    const interval = window.setInterval(() => {
+      if (tenableSyncing) {
+        fetchTenableLogs();
+      }
+    }, 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(interval);
+    };
+  }, [hasTenableAutomation, tenableJobId, tenableSyncing]);
+
+  const tenableLogsRecent = useMemo(() => {
+    const now = Date.now();
+    const cutoff = now - 3 * 24 * 60 * 60 * 1000;
+    return tenableLogs.filter((log) => {
+      if (!log.createdAt) return false;
+      const parsed = new Date(log.createdAt).getTime();
+      if (Number.isNaN(parsed)) return false;
+      return parsed >= cutoff;
+    });
+  }, [tenableLogs]);
+
+  const tenableLogsPerPage = 5;
+  const tenableLogsTotalPages = Math.max(
+    1,
+    Math.ceil(tenableLogsRecent.length / tenableLogsPerPage)
+  );
+  const tenableLogsPage = Math.min(tenableLogPage, tenableLogsTotalPages);
+  const tenableLogsStart = (tenableLogsPage - 1) * tenableLogsPerPage;
+  const tenableLogsPageItems = tenableLogsRecent.slice(
+    tenableLogsStart,
+    tenableLogsStart + tenableLogsPerPage
+  );
 
 type StepField = "title" | "detail";
 
@@ -590,10 +773,30 @@ function moveStep(index: number, direction: -1 | 1) {
                     variant="outline"
                     className="rounded-2xl border-white/30 text-white hover:bg-white/10"
                     onClick={handleTenableSync}
-                    disabled={!isAdmin || tenableSyncing}
+                    disabled={!isAdmin || tenableSyncing || tenablePaused || tenableIsRunning}
                   >
                     <PlayCircle className="mr-2 h-4 w-4" />
                     {tenableSyncing ? "Executando..." : "Executar agora"}
+                  </Button>
+                  {tenableTarget === "plugins" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-2xl border-white/30 text-white hover:bg-white/10"
+                      onClick={() => setTenableFullResyncOpen(true)}
+                      disabled={!isAdmin || tenableSyncing || tenablePaused}
+                    >
+                      Full resync
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-2xl border-white/30 text-white hover:bg-white/10"
+                    onClick={() => handleTenablePauseToggle(!tenablePaused)}
+                    disabled={!isAdmin || tenablePauseLoading}
+                  >
+                    {tenablePaused ? "Retomar sincronização" : "Pausar sincronização"}
                   </Button>
                   <div className="flex items-center gap-2 text-xs text-zinc-400">
                     <Zap className="h-4 w-4 text-purple-300" />
@@ -615,6 +818,37 @@ function moveStep(index: number, direction: -1 | 1) {
                     {tenableSyncMessage}
                   </div>
                 )}
+                {tenablePauseError && (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                    {tenablePauseError}
+                  </div>
+                )}
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                        Histórico da sincronização
+                      </p>
+                      <p className="text-xs text-zinc-400">
+                        Consulte o log do backend quando necessário.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-2xl border-white/30 text-white hover:bg-white/10"
+                      onClick={async () => {
+                        await fetchTenableLogs();
+                        setTenableLogModalOpen(true);
+                      }}
+                      disabled={tenableLogLoading}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {tenableLogLoading ? "Carregando..." : "Ver logs"}
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -857,6 +1091,173 @@ function moveStep(index: number, direction: -1 | 1) {
                 }}
               >
                 {saving ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {tenableLogModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#050513] p-6 text-white shadow-[0_25px_90px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-purple-300">
+                  Logs da sincronização
+                </p>
+                <h3 className="text-xl font-semibold">Tenable</h3>
+              </div>
+              <button
+                type="button"
+                className="text-sm text-zinc-400 hover:text-white"
+                onClick={() => setTenableLogModalOpen(false)}
+              >
+                Fechar
+              </button>
+            </div>
+            {tenableJobSnapshot && (
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 uppercase tracking-[0.3em]">
+                  {tenableJobSnapshot.status}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                  Pendentes: {tenableJobSnapshot.pendingIssues}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                  Última execução: {tenableJobSnapshot.lastRun}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                  Duração: {tenableJobSnapshot.duration}
+                </span>
+              </div>
+            )}
+            <div className="mt-5 space-y-2 text-xs text-zinc-300">
+              {tenableLogsRecent.length === 0 && (
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-zinc-500">
+                  Nenhum log recente registrado (últimos 3 dias).
+                </div>
+              )}
+              {tenableLogsPageItems.map((log, index) => (
+                <div
+                  key={`${log.timestamp}-${index}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] ${
+                        log.level === "error"
+                          ? "bg-rose-500/20 text-rose-200"
+                          : log.level === "warning"
+                          ? "bg-amber-500/20 text-amber-200"
+                          : "bg-emerald-500/20 text-emerald-200"
+                      }`}
+                    >
+                      {log.level ?? "info"}
+                    </span>
+                    <span className="text-zinc-200">{log.message}</span>
+                  </div>
+                  <span className="text-[11px] text-zinc-500">
+                    {log.timestamp}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {tenableLogsRecent.length > tenableLogsPerPage && (
+              <div className="mt-5 flex items-center justify-between text-xs text-zinc-400">
+                <span>
+                  Página {tenableLogsPage} de {tenableLogsTotalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-full border border-white/10 text-zinc-300 hover:bg-white/10"
+                    onClick={() => setTenableLogPage((prev) => Math.max(1, prev - 1))}
+                    disabled={tenableLogsPage <= 1}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-full border border-white/10 text-zinc-300 hover:bg-white/10"
+                    onClick={() =>
+                      setTenableLogPage((prev) =>
+                        Math.min(tenableLogsTotalPages, prev + 1)
+                      )
+                    }
+                    disabled={tenableLogsPage >= tenableLogsTotalPages}
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {tenableFullResyncOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#050513] p-6 text-white shadow-[0_25px_90px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-purple-300">
+                  Confirmação
+                </p>
+                <h3 className="text-xl font-semibold">Full resync Tenable</h3>
+              </div>
+              <button
+                type="button"
+                className="text-sm text-zinc-400 hover:text-white"
+                onClick={() => setTenableFullResyncOpen(false)}
+              >
+                Fechar
+              </button>
+            </div>
+            <p className="mt-4 text-sm text-zinc-300">
+              Isso irá zerar o checkpoint e refazer a sincronização completa de
+              plugins. Deseja continuar?
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                className="text-sm text-zinc-300 hover:bg-white/10"
+                onClick={() => setTenableFullResyncOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="rounded-2xl px-6 py-2"
+                disabled={tenableSyncing}
+                onClick={async () => {
+                  setTenableSyncing(true);
+                  setTenableSyncError(null);
+                  setTenableSyncMessage(null);
+                  try {
+                    const response = await fetch(
+                      "/api/integrations/tenable/sync-plugins?full=true",
+                      { method: "POST" }
+                    );
+                    const data = await response.json().catch(() => null);
+                    if (!response.ok) {
+                      throw new Error(data?.error || "Falha ao iniciar full resync.");
+                    }
+                    setTenableSyncMessage(
+                      "Full resync iniciado. Monitorando o progresso nos logs."
+                    );
+                    setTenableFullResyncOpen(false);
+                  } catch (err) {
+                    setTenableSyncError(
+                      err instanceof Error
+                        ? err.message
+                        : "Falha ao iniciar full resync."
+                    );
+                  } finally {
+                    setTenableSyncing(false);
+                    fetchTenableLogs();
+                  }
+                }}
+              >
+                Confirmar
               </Button>
             </div>
           </div>

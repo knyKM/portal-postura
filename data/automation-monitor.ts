@@ -16,6 +16,7 @@ export type AutomationLogLevel = "info" | "warning" | "error";
 
 export type AutomationLog = {
   jobId: string;
+  createdAt?: string;
   timestamp: string;
   message: string;
   level?: AutomationLogLevel;

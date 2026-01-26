@@ -14,7 +14,7 @@ type SuggestionItem = {
   userName: string;
   userEmail: string;
   content: string;
-  status: "pending" | "approved" | string;
+  status: "pending" | "approved" | "completed" | string;
   implementationStage: string | null;
   createdAt: string;
 };
@@ -26,14 +26,15 @@ export default function SuggestionsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
-const [actioningId, setActioningId] = useState<number | null>(null);
-const [stageUpdatingId, setStageUpdatingId] = useState<number | null>(null);
-const [ideaContent, setIdeaContent] = useState("");
-const [ideaError, setIdeaError] = useState<string | null>(null);
-const [ideaSuccess, setIdeaSuccess] = useState<string | null>(null);
-const [submittingIdea, setSubmittingIdea] = useState(false);
-const [isAdmin, setIsAdmin] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [actioningId, setActioningId] = useState<number | null>(null);
+  const [stageUpdatingId, setStageUpdatingId] = useState<number | null>(null);
+  const [ideaContent, setIdeaContent] = useState("");
+  const [ideaError, setIdeaError] = useState<string | null>(null);
+  const [ideaSuccess, setIdeaSuccess] = useState<string | null>(null);
+  const [submittingIdea, setSubmittingIdea] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   async function fetchSuggestions(signal?: AbortSignal) {
     setError(null);
@@ -97,7 +98,6 @@ const [isAdmin, setIsAdmin] = useState(false);
     setRefreshing(false);
   }
 
-  const totalSuggestions = suggestions.length;
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat("pt-BR", {
@@ -116,11 +116,16 @@ const [isAdmin, setIsAdmin] = useState(false);
   }
 
   const pendingSuggestions = suggestions.filter(
-    (item) => item.status !== "approved"
+    (item) => item.status === "pending"
   );
   const approvedSuggestions = suggestions.filter(
     (item) => item.status === "approved"
   );
+  const completedSuggestions = suggestions.filter(
+    (item) => item.status === "completed"
+  );
+
+  const totalSuggestions = pendingSuggestions.length + approvedSuggestions.length;
 
   const pipelineStages = [
     "Descoberta",
@@ -212,6 +217,68 @@ const [isAdmin, setIsAdmin] = useState(false);
       setError("Apenas administradores podem descartar sugestões.");
       return;
     }
+    setActioningId(id);
+    setError(null);
+    try {
+      const response = await fetch("/api/suggestions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao remover sugestão.");
+      }
+      setSuggestions((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Erro ao remover a sugestão."
+      );
+    } finally {
+      setActioningId(null);
+    }
+  }
+
+  async function handleCompleteSuggestion(id: number) {
+    if (!isAdmin) {
+      setError("Apenas administradores podem concluir sugestões.");
+      return;
+    }
+    const confirmed = window.confirm("Confirmar conclusão desta sugestão?");
+    if (!confirmed) return;
+    setActioningId(id);
+    setError(null);
+    try {
+      const response = await fetch("/api/suggestions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "completed" }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Falha ao concluir sugestão.");
+      }
+      setSuggestions((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, ...data.suggestion } : item
+        )
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Erro ao concluir a sugestão."
+      );
+    } finally {
+      setActioningId(null);
+    }
+  }
+
+  async function handleDeleteSuggestion(id: number) {
+    if (!isAdmin) {
+      setError("Apenas administradores podem remover sugestões.");
+      return;
+    }
+    const confirmed = window.confirm("Tem certeza que deseja remover a sugestão?");
+    if (!confirmed) return;
     setActioningId(id);
     setError(null);
     try {
@@ -557,6 +624,19 @@ const [isAdmin, setIsAdmin] = useState(false);
                         </button>
                         <button
                           type="button"
+                          onClick={() => handleCompleteSuggestion(suggestion.id)}
+                          disabled={actioningId === suggestion.id}
+                          className={cn(
+                            "inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold transition",
+                            actioningId === suggestion.id
+                              ? "cursor-not-allowed bg-emerald-500/20 text-emerald-100"
+                              : "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
+                          )}
+                        >
+                          Concluir
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleRejectSuggestion(suggestion.id)}
                           disabled={actioningId === suggestion.id}
                           className={cn(
@@ -567,6 +647,19 @@ const [isAdmin, setIsAdmin] = useState(false);
                           )}
                         >
                           Descartar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSuggestion(suggestion.id)}
+                          disabled={actioningId === suggestion.id}
+                          className={cn(
+                            "inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold transition",
+                            actioningId === suggestion.id
+                              ? "cursor-not-allowed border border-slate-500/30 text-zinc-400"
+                              : "border border-slate-500/50 text-zinc-300 hover:bg-white/5"
+                          )}
+                        >
+                          Remover
                         </button>
                       </div>
                     ) : (
@@ -712,6 +805,36 @@ const [isAdmin, setIsAdmin] = useState(false);
                                     </option>
                                   ))}
                                 </select>
+                                {isAdmin && (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCompleteSuggestion(item.id)}
+                                      disabled={actioningId === item.id}
+                                      className={cn(
+                                        "inline-flex flex-1 items-center justify-center rounded-xl px-2 py-1 text-[11px] font-semibold transition",
+                                        actioningId === item.id
+                                          ? "cursor-not-allowed bg-emerald-500/30 text-emerald-100"
+                                          : "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
+                                      )}
+                                    >
+                                      Concluir
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteSuggestion(item.id)}
+                                      disabled={actioningId === item.id}
+                                      className={cn(
+                                        "inline-flex items-center justify-center rounded-xl border px-2 py-1 text-[11px] font-semibold",
+                                        isDark
+                                          ? "border-white/10 text-zinc-300 hover:bg-white/5"
+                                          : "border-slate-200 text-slate-700 hover:bg-slate-100"
+                                      )}
+                                    >
+                                      Remover
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ))
                           )}
@@ -719,6 +842,87 @@ const [isAdmin, setIsAdmin] = useState(false);
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 space-y-3">
+              <div
+                className={cn(
+                  "flex items-center justify-between rounded-3xl border px-6 py-4",
+                  isDark
+                    ? "border-white/5 bg-[#0b1122]"
+                    : "border-slate-200 bg-white"
+                )}
+              >
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                    Histórico
+                  </p>
+                  <p
+                    className={cn("text-sm", isDark ? "text-zinc-300" : "text-slate-600")}
+                  >
+                    Sugestões concluídas.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full text-[11px]"
+                  onClick={() => setShowHistory((prev) => !prev)}
+                >
+                  {showHistory ? "Recolher" : "Expandir"}
+                </Button>
+              </div>
+              {showHistory && (
+                <div className="grid gap-3">
+                  {completedSuggestions.length === 0 ? (
+                    <div
+                      className={cn(
+                        "rounded-3xl border px-6 py-6 text-center text-sm",
+                        isDark
+                          ? "border-white/5 bg-black/20 text-zinc-400"
+                          : "border-slate-200 bg-white text-slate-600"
+                      )}
+                    >
+                      Nenhuma sugestão concluída ainda.
+                    </div>
+                  ) : (
+                    completedSuggestions.map((suggestion) => (
+                      <div
+                        key={suggestion.id}
+                        className={cn(
+                          "rounded-3xl border p-5",
+                          isDark
+                            ? "border-white/5 bg-black/30 text-zinc-100"
+                            : "border-slate-200 bg-white text-slate-900"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                            #{suggestion.id.toString().padStart(3, "0")} •{" "}
+                            {formatDate(suggestion.createdAt)}
+                          </div>
+                          {isAdmin && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full text-[11px]"
+                              onClick={() => handleDeleteSuggestion(suggestion.id)}
+                              disabled={actioningId === suggestion.id}
+                            >
+                              Remover
+                            </Button>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm text-zinc-300">
+                          {suggestion.content}
+                        </p>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>

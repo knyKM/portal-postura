@@ -25,6 +25,47 @@ import {
 
 const releases = [
   {
+    version: "1.6",
+    codename: "Observabilidade Viva",
+    releasedAt: "Janeiro/2026",
+    summary:
+      "Fluxo de sugestões com histórico concluído, validações de metas e enriquecimento do catálogo de vulnerabilidades Tenable.",
+    highlights: [
+      {
+        icon: ClipboardCheck,
+        title: "Sugestões com conclusão e histórico",
+        description:
+          "Sugestões Jira e Postura SM podem ser concluídas e arquivadas com histórico recolhido.",
+        bullets: [
+          "Botões de concluir e remover com confirmação.",
+          "Histórico de sugestões concluídas recolhido por padrão.",
+          "Manutenção de solicitações ativas separadas do histórico.",
+        ],
+      },
+      {
+        icon: CalendarDays,
+        title: "Metas com validação de datas",
+        description:
+          "Cadastro de metas agora bloqueia datas inválidas para evitar inconsistências.",
+        bullets: [
+          "Data de início não pode ser superior à data de fim.",
+          "Validação aplicada na criação e edição.",
+        ],
+      },
+      {
+        icon: ShieldCheck,
+        title: "Vulnerabilidades Tenable enriquecidas",
+        description:
+          "Sincronização passa a gravar CVE, CPE, CVSS e VPR para análises mais completas.",
+        bullets: [
+          "CVE/CPE armazenados com múltiplos valores.",
+          "CVSS3/4 e VPR registrados para priorização.",
+          "Plugins Info ignorados no catálogo.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5",
     codename: "Topologia Viva",
     releasedAt: "Dezembro/2025",

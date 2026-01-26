@@ -20,6 +20,12 @@ type Contract = {
   owner: string;
   area: string | null;
   contract_type: string | null;
+  segment: string | null;
+  sap_contract: string | null;
+  contract_year: string | null;
+  contract_scope: string | null;
+  management: string | null;
+  supplemental_used: number | null;
   status: string;
   start_date: string;
   end_date: string;
@@ -38,6 +44,22 @@ const statusOptions = [
   { value: "suspenso", label: "Suspenso" },
   { value: "encerrado", label: "Encerrado" },
 ];
+
+const segmentOptions = ["CAPEX", "OPEX"];
+const scopeOptions = ["Licenças", "Serviço", "Licenças/Serviços"];
+const managementOptions = ["Red", "Postura Cibernetica", "DevSecOps", "OffSecOps", "AppSec"];
+const responsibleOptions = ["Alisson Oliveira", "Maffei", "Dalson", "Thiago Ribeiro"];
+const CUSTOM_OPTION_VALUE = "__custom__";
+
+function resolveSelectValue(value: string, options: string[]) {
+  if (!value) {
+    return { selected: "", custom: "" };
+  }
+  if (options.includes(value)) {
+    return { selected: value, custom: "" };
+  }
+  return { selected: CUSTOM_OPTION_VALUE, custom: value };
+}
 
 function parseLocalDate(value?: string | null) {
   if (!value) return null;
@@ -81,6 +103,20 @@ export default function GestaoContratosPage() {
   const [expiringInput, setExpiringInput] = useState("30");
   const [expiringSaving, setExpiringSaving] = useState(false);
   const [expiringError, setExpiringError] = useState<string | null>(null);
+  const [expiringModalOpen, setExpiringModalOpen] = useState(false);
+  const [supplementalBalance, setSupplementalBalance] = useState(0);
+  const [supplementalInput, setSupplementalInput] = useState("0");
+  const [supplementalSaving, setSupplementalSaving] = useState(false);
+  const [supplementalError, setSupplementalError] = useState<string | null>(null);
+  const [supplementalModalOpen, setSupplementalModalOpen] = useState(false);
+  const [supplementalDescription, setSupplementalDescription] = useState("");
+  const [supplementalHistory, setSupplementalHistory] = useState<
+    Array<{ id: number; amount: number; description: string; created_at: string }>
+  >([]);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [supplementalFieldError, setSupplementalFieldError] = useState<
+    string | null
+  >(null);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -92,6 +128,17 @@ export default function GestaoContratosPage() {
   const [owner, setOwner] = useState("");
   const [area, setArea] = useState("");
   const [contractType, setContractType] = useState("");
+  const [segmentSelect, setSegmentSelect] = useState("");
+  const [segmentCustom, setSegmentCustom] = useState("");
+  const [sapContract, setSapContract] = useState("");
+  const [contractYear, setContractYear] = useState("");
+  const [contractYearCustom, setContractYearCustom] = useState("");
+  const [scopeSelect, setScopeSelect] = useState("");
+  const [scopeCustom, setScopeCustom] = useState("");
+  const [managementSelect, setManagementSelect] = useState("");
+  const [managementCustom, setManagementCustom] = useState("");
+  const [responsibleSelect, setResponsibleSelect] = useState("");
+  const [responsibleCustom, setResponsibleCustom] = useState("");
   const [status, setStatus] = useState("ativo");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -100,6 +147,7 @@ export default function GestaoContratosPage() {
   const [valueCurrency, setValueCurrency] = useState("BRL");
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
+  const [supplementalUsed, setSupplementalUsed] = useState("");
 
   const portalTarget = typeof document !== "undefined" ? document.body : null;
 
@@ -149,6 +197,13 @@ export default function GestaoContratosPage() {
           setExpiringDays(data.expiringDays);
           setExpiringInput(String(data.expiringDays));
         }
+        if (typeof data?.supplementalBalance === "number") {
+          setSupplementalBalance(data.supplementalBalance);
+          setSupplementalInput(String(data.supplementalBalance));
+        }
+        if (Array.isArray(data?.supplementalHistory)) {
+          setSupplementalHistory(data.supplementalHistory);
+        }
       })
       .catch(() => null);
   }, [loading]);
@@ -161,8 +216,11 @@ export default function GestaoContratosPage() {
         contract.title,
         contract.vendor,
         contract.owner,
-        contract.area,
-        contract.contract_type,
+        contract.segment,
+        contract.sap_contract,
+        contract.contract_year,
+        contract.contract_scope,
+        contract.management,
         contract.description,
       ]
         .filter(Boolean)
@@ -178,6 +236,7 @@ export default function GestaoContratosPage() {
     let active = 0;
     let expiring = 0;
     let expired = 0;
+    let supplementalUsedTotal = 0;
     contracts.forEach((contract) => {
       const daysRemaining = getDaysRemaining(contract.end_date);
       if (contract.status === "encerrado") return;
@@ -194,9 +253,34 @@ export default function GestaoContratosPage() {
       if (start && start <= startOfToday) {
         active += 1;
       }
+      if (typeof contract.supplemental_used === "number") {
+        supplementalUsedTotal += contract.supplemental_used;
+      }
     });
-    return { active, expiring, expired };
+    return { active, expiring, expired, supplementalUsedTotal };
   }, [contracts, expiringDays]);
+
+  const supplementalAvailable = Math.max(
+    0,
+    supplementalBalance - stats.supplementalUsedTotal
+  );
+
+  const editingContractUsed = useMemo(() => {
+    if (!editingId) return 0;
+    const contract = contracts.find((item) => item.id === editingId);
+    return typeof contract?.supplemental_used === "number"
+      ? contract.supplemental_used
+      : 0;
+  }, [editingId, contracts]);
+
+  const contractYearOptions = useMemo(() => {
+    const current = new Date().getFullYear();
+    const years: string[] = [];
+    for (let year = current + 5; year >= current - 10; year -= 1) {
+      years.push(String(year));
+    }
+    return years;
+  }, []);
 
   function resetForm() {
     setTitle("");
@@ -204,6 +288,17 @@ export default function GestaoContratosPage() {
     setOwner("");
     setArea("");
     setContractType("");
+    setSegmentSelect("");
+    setSegmentCustom("");
+    setSapContract("");
+    setContractYear("");
+    setContractYearCustom("");
+    setScopeSelect("");
+    setScopeCustom("");
+    setManagementSelect("");
+    setManagementCustom("");
+    setResponsibleSelect("");
+    setResponsibleCustom("");
     setStatus("ativo");
     setStartDate("");
     setEndDate("");
@@ -212,6 +307,8 @@ export default function GestaoContratosPage() {
     setValueCurrency("BRL");
     setDescription("");
     setNotes("");
+    setSupplementalUsed("");
+    setSupplementalFieldError(null);
   }
 
   function openNewModal() {
@@ -221,11 +318,37 @@ export default function GestaoContratosPage() {
   }
 
   function openEditModal(contract: Contract) {
+    const segmentResolved = resolveSelectValue(contract.segment ?? "", segmentOptions);
+    const scopeResolved = resolveSelectValue(contract.contract_scope ?? "", scopeOptions);
+    const managementResolved = resolveSelectValue(
+      contract.management ?? "",
+      managementOptions
+    );
+    const responsibleResolved = resolveSelectValue(
+      contract.owner ?? "",
+      responsibleOptions
+    );
     setTitle(contract.title);
     setVendor(contract.vendor);
     setOwner(contract.owner);
     setArea(contract.area ?? "");
     setContractType(contract.contract_type ?? "");
+    setSegmentSelect(segmentResolved.selected);
+    setSegmentCustom(segmentResolved.custom);
+    setSapContract(contract.sap_contract ?? "");
+    if (contract.contract_year && !contractYearOptions.includes(contract.contract_year)) {
+      setContractYear(CUSTOM_OPTION_VALUE);
+      setContractYearCustom(contract.contract_year);
+    } else {
+      setContractYear(contract.contract_year ?? "");
+      setContractYearCustom("");
+    }
+    setScopeSelect(scopeResolved.selected);
+    setScopeCustom(scopeResolved.custom);
+    setManagementSelect(managementResolved.selected);
+    setManagementCustom(managementResolved.custom);
+    setResponsibleSelect(responsibleResolved.selected);
+    setResponsibleCustom(responsibleResolved.custom);
     setStatus(contract.status);
     setStartDate(contract.start_date);
     setEndDate(contract.end_date);
@@ -234,6 +357,12 @@ export default function GestaoContratosPage() {
     setValueCurrency(contract.value_currency ?? "BRL");
     setDescription(contract.description ?? "");
     setNotes(contract.notes ?? "");
+    setSupplementalUsed(
+      typeof contract.supplemental_used === "number"
+        ? contract.supplemental_used.toString()
+        : ""
+    );
+    setSupplementalFieldError(null);
     setEditingId(contract.id);
     setModalOpen(true);
   }
@@ -241,13 +370,28 @@ export default function GestaoContratosPage() {
   async function handleSave() {
     setSaving(true);
     setError(null);
+    setSupplementalFieldError(null);
+    const segmentValue =
+      segmentSelect === CUSTOM_OPTION_VALUE ? segmentCustom : segmentSelect;
+    const scopeValue = scopeSelect === CUSTOM_OPTION_VALUE ? scopeCustom : scopeSelect;
+    const managementValue =
+      managementSelect === CUSTOM_OPTION_VALUE ? managementCustom : managementSelect;
+    const responsibleValue =
+      responsibleSelect === CUSTOM_OPTION_VALUE ? responsibleCustom : responsibleSelect;
+    const yearValue =
+      contractYear === CUSTOM_OPTION_VALUE ? contractYearCustom : contractYear;
     const payload = {
       id: editingId ?? undefined,
       title,
       vendor,
-      owner,
+      owner: responsibleValue || owner,
       area,
       contractType,
+      segment: segmentValue || null,
+      sapContract,
+      contractYear: yearValue || null,
+      contractScope: scopeValue || null,
+      management: managementValue || null,
       status,
       startDate,
       endDate,
@@ -256,7 +400,20 @@ export default function GestaoContratosPage() {
       valueCurrency,
       description,
       notes,
+      supplementalUsed: supplementalUsed ? Number(supplementalUsed) : null,
     };
+
+    if (payload.supplementalUsed !== null) {
+      const available =
+        supplementalAvailable + (editingId ? editingContractUsed : 0);
+      if (payload.supplementalUsed > available) {
+        setSaving(false);
+        setSupplementalFieldError(
+          "Saldo suplementar insuficiente para este contrato."
+        );
+        return;
+      }
+    }
 
     try {
       const response = await fetch("/api/contracts", {
@@ -366,7 +523,7 @@ export default function GestaoContratosPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-4">
           {[
             {
               label: "Ativos",
@@ -389,6 +546,13 @@ export default function GestaoContratosPage() {
               accent: "from-rose-500/20 via-rose-500/5 to-transparent",
               border: "border-rose-500/40",
             },
+            {
+              label: "Saldo",
+              value: formatCurrency(supplementalAvailable, "BRL"),
+              icon: ShieldCheck,
+              accent: "from-sky-500/20 via-sky-500/5 to-transparent",
+              border: "border-sky-500/40",
+            },
           ].map((card) => (
             <Card
               key={card.label}
@@ -406,9 +570,52 @@ export default function GestaoContratosPage() {
                   </p>
                   <p className="text-2xl font-semibold">{card.value}</p>
                   {card.label === "Vencendo" && (
-                    <p className="text-[11px] text-zinc-500">
-                      Considerando {expiringDays} dias
-                    </p>
+                    <div className="mt-2 space-y-2 text-[11px] text-zinc-500">
+                      <p>Considerando {expiringDays} dias</p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setExpiringError(null);
+                          setExpiringModalOpen(true);
+                        }}
+                      >
+                        Ajustar janela
+                      </Button>
+                    </div>
+                  )}
+                  {card.label === "Saldo" && (
+                    <div className="mt-2 space-y-2 text-[11px] text-zinc-500">
+                      <p>Usado {formatCurrency(stats.supplementalUsedTotal, "BRL")}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setSupplementalDescription("");
+                            setSupplementalError(null);
+                            setSupplementalModalOpen(true);
+                          }}
+                        >
+                          Ajustar saldo
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setHistoryModalOpen(true)}
+                        >
+                          Ver histórico
+                        </Button>
+                      </div>
+                      {supplementalError && (
+                        <p className="text-[11px] text-rose-400">
+                          {supplementalError}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div
@@ -430,77 +637,6 @@ export default function GestaoContratosPage() {
               </CardContent>
             </Card>
           ))}
-        </section>
-
-        <section
-          className={cn(
-            "flex flex-col items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-xs md:flex-row md:items-center",
-            isDark
-              ? "border-white/10 bg-black/30 text-zinc-300"
-              : "border-slate-200 bg-slate-50 text-slate-700"
-          )}
-        >
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-              Janela de vencimento
-            </p>
-            <p className="mt-1 text-sm">
-              Ajuste o prazo em dias para considerar contratos como “vencendo”.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={365}
-              value={expiringInput}
-              onChange={(event) => setExpiringInput(event.target.value)}
-              className={cn(
-                "h-9 w-24 rounded-xl text-sm",
-                isDark
-                  ? "border-white/10 bg-black/40 text-white"
-                  : "border-slate-200 bg-white"
-              )}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={expiringSaving}
-              onClick={async () => {
-                const value = Number(expiringInput);
-                if (!Number.isFinite(value) || value <= 0) {
-                  setExpiringError("Informe um número válido em dias.");
-                  return;
-                }
-                setExpiringSaving(true);
-                setExpiringError(null);
-                try {
-                  const response = await fetch("/api/contracts/settings", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ expiringDays: value }),
-                  });
-                  const data = await response.json().catch(() => null);
-                  if (!response.ok) {
-                    throw new Error(data?.error || "Não foi possível salvar.");
-                  }
-                  setExpiringDays(data?.expiringDays ?? value);
-                  setExpiringInput(String(data?.expiringDays ?? value));
-                } catch (err) {
-                  setExpiringError(
-                    err instanceof Error ? err.message : "Falha ao salvar prazo."
-                  );
-                } finally {
-                  setExpiringSaving(false);
-                }
-              }}
-            >
-              {expiringSaving ? "Salvando..." : "Salvar prazo"}
-            </Button>
-          </div>
-          {expiringError && (
-            <p className="text-xs text-rose-400">{expiringError}</p>
-          )}
         </section>
 
         {error && (
@@ -579,6 +715,24 @@ export default function GestaoContratosPage() {
                         <p className="text-sm text-zinc-200">{contract.owner}</p>
                       </div>
                       <div>
+                        <p className="uppercase tracking-[0.2em]">Segmento</p>
+                        <p className="text-sm text-zinc-200">
+                          {contract.segment ?? "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="uppercase tracking-[0.2em]">Gerência</p>
+                        <p className="text-sm text-zinc-200">
+                          {contract.management ?? "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="uppercase tracking-[0.2em]">Escopo</p>
+                        <p className="text-sm text-zinc-200">
+                          {contract.contract_scope ?? "—"}
+                        </p>
+                      </div>
+                      <div>
                         <p className="uppercase tracking-[0.2em]">Prazo</p>
                         <p
                           className={cn(
@@ -594,6 +748,18 @@ export default function GestaoContratosPage() {
                         </p>
                       </div>
                       <div>
+                        <p className="uppercase tracking-[0.2em]">Ano contrato</p>
+                        <p className="text-sm text-zinc-200">
+                          {contract.contract_year ?? "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="uppercase tracking-[0.2em]">Contrato SAP</p>
+                        <p className="text-sm text-zinc-200">
+                          {contract.sap_contract ?? "—"}
+                        </p>
+                      </div>
+                      <div>
                         <p className="uppercase tracking-[0.2em]">Vigência</p>
                         <p className="text-sm text-zinc-200">
                           {new Date(contract.start_date).toLocaleDateString("pt-BR")} ·{" "}
@@ -601,9 +767,15 @@ export default function GestaoContratosPage() {
                         </p>
                       </div>
                       <div>
-                        <p className="uppercase tracking-[0.2em]">Valor</p>
+                        <p className="uppercase tracking-[0.2em]">Valor adjudicado</p>
                         <p className="text-sm text-zinc-200">
                           {formatCurrency(contract.value_amount, contract.value_currency)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="uppercase tracking-[0.2em]">Saldo</p>
+                        <p className="text-sm text-zinc-200">
+                          {formatCurrency(contract.supplemental_used, "BRL")}
                         </p>
                       </div>
                     </div>
@@ -614,10 +786,7 @@ export default function GestaoContratosPage() {
                       </p>
                     )}
 
-                    <div className="flex items-center justify-between gap-3 text-xs">
-                      <div className="text-zinc-500">
-                        {contract.area ? `Área: ${contract.area}` : "Área não informada"}
-                      </div>
+                    <div className="flex items-center justify-end gap-3 text-xs">
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -678,7 +847,7 @@ export default function GestaoContratosPage() {
                   <Input
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Título do contrato *"
+                    placeholder="Objeto do contrato *"
                     required
                     className={cn(
                       "h-10 rounded-xl text-sm",
@@ -695,34 +864,205 @@ export default function GestaoContratosPage() {
                       isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
                     )}
                   />
+                  <select
+                    value={segmentSelect}
+                    onChange={(event) => setSegmentSelect(event.target.value)}
+                    className={cn(
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    <option value="">Selecionar segmento</option>
+                    {segmentOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
+                  </select>
+                  {segmentSelect === CUSTOM_OPTION_VALUE && (
+                    <Input
+                      value={segmentCustom}
+                      onChange={(event) => setSegmentCustom(event.target.value)}
+                      placeholder="Novo segmento"
+                      className={cn(
+                        "h-10 rounded-xl text-sm",
+                        isDark
+                          ? "border-white/10 bg-black/40 text-white"
+                          : "border-slate-200"
+                      )}
+                    />
+                  )}
                   <Input
-                    value={owner}
-                    onChange={(event) => setOwner(event.target.value)}
-                    placeholder="Responsável *"
-                    required
+                    value={sapContract}
+                    onChange={(event) => setSapContract(event.target.value)}
+                    placeholder="Contrato SAP"
+                    className={cn(
+                      "h-10 rounded-xl text-sm",
+                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                    )}
+                  />
+                  <select
+                    value={contractYear}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setContractYear(next);
+                      if (next !== CUSTOM_OPTION_VALUE) {
+                        setContractYearCustom("");
+                      }
+                    }}
+                    className={cn(
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    <option value="">Selecionar ano do contrato</option>
+                    {contractYearOptions.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
+                  </select>
+                  {contractYear === CUSTOM_OPTION_VALUE && (
+                    <Input
+                      value={contractYearCustom}
+                      onChange={(event) => setContractYearCustom(event.target.value)}
+                      placeholder="Ano personalizado"
+                      className={cn(
+                        "h-10 rounded-xl text-sm",
+                        isDark
+                          ? "border-white/10 bg-black/40 text-white"
+                          : "border-slate-200"
+                      )}
+                    />
+                  )}
+                  <select
+                    value={scopeSelect}
+                    onChange={(event) => setScopeSelect(event.target.value)}
+                    className={cn(
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    <option value="">Selecionar escopo</option>
+                    {scopeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
+                  </select>
+                  {scopeSelect === CUSTOM_OPTION_VALUE && (
+                    <Input
+                      value={scopeCustom}
+                      onChange={(event) => setScopeCustom(event.target.value)}
+                      placeholder="Novo escopo"
+                      className={cn(
+                        "h-10 rounded-xl text-sm",
+                        isDark
+                          ? "border-white/10 bg-black/40 text-white"
+                          : "border-slate-200"
+                      )}
+                    />
+                  )}
+                  <Input
+                    value={valueAmount}
+                    onChange={(event) => setValueAmount(event.target.value)}
+                    placeholder="Valor adjudicado (R$)"
                     className={cn(
                       "h-10 rounded-xl text-sm",
                       isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
                     )}
                   />
                   <Input
-                    value={area}
-                    onChange={(event) => setArea(event.target.value)}
-                    placeholder="Área responsável"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={supplementalUsed}
+                    onChange={(event) => setSupplementalUsed(event.target.value)}
+                    placeholder="Saldo utilizado (R$)"
                     className={cn(
                       "h-10 rounded-xl text-sm",
                       isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
                     )}
                   />
-                  <Input
-                    value={contractType}
-                    onChange={(event) => setContractType(event.target.value)}
-                    placeholder="Tipo de contrato"
+                  <p className="text-[11px] text-zinc-500 md:col-span-2">
+                    Disponível: {formatCurrency(supplementalAvailable, "BRL")}
+                  </p>
+                  {supplementalFieldError && (
+                    <p className="text-[11px] text-rose-400 md:col-span-2">
+                      {supplementalFieldError}
+                    </p>
+                  )}
+                  <select
+                    value={managementSelect}
+                    onChange={(event) => setManagementSelect(event.target.value)}
                     className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
                     )}
-                  />
+                  >
+                    <option value="">Selecionar gerência</option>
+                    {managementOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
+                  </select>
+                  {managementSelect === CUSTOM_OPTION_VALUE && (
+                    <Input
+                      value={managementCustom}
+                      onChange={(event) => setManagementCustom(event.target.value)}
+                      placeholder="Nova gerência"
+                      className={cn(
+                        "h-10 rounded-xl text-sm",
+                        isDark
+                          ? "border-white/10 bg-black/40 text-white"
+                          : "border-slate-200"
+                      )}
+                    />
+                  )}
+                  <select
+                    value={responsibleSelect}
+                    onChange={(event) => setResponsibleSelect(event.target.value)}
+                    className={cn(
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    <option value="">Selecionar responsável</option>
+                    {responsibleOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
+                  </select>
+                  {responsibleSelect === CUSTOM_OPTION_VALUE && (
+                    <Input
+                      value={responsibleCustom}
+                      onChange={(event) => setResponsibleCustom(event.target.value)}
+                      placeholder="Novo responsável"
+                      className={cn(
+                        "h-10 rounded-xl text-sm",
+                        isDark
+                          ? "border-white/10 bg-black/40 text-white"
+                          : "border-slate-200"
+                      )}
+                    />
+                  )}
                   <select
                     value={status}
                     onChange={(event) => setStatus(event.target.value)}
@@ -770,24 +1110,6 @@ export default function GestaoContratosPage() {
                       isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
                     )}
                   />
-                  <Input
-                    value={valueAmount}
-                    onChange={(event) => setValueAmount(event.target.value)}
-                    placeholder="Valor contratado"
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <Input
-                    value={valueCurrency}
-                    onChange={(event) => setValueCurrency(event.target.value)}
-                    placeholder="Moeda"
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
                 </div>
                 <div className="mt-4 space-y-3">
                   <Textarea
@@ -828,6 +1150,275 @@ export default function GestaoContratosPage() {
                         : editingId
                         ? "Salvar alterações"
                         : "Cadastrar contrato"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>,
+            portalTarget
+          )
+        : null}
+      {portalTarget && supplementalModalOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div
+                className={cn(
+                  "w-full max-w-lg rounded-3xl border p-6",
+                  isDark ? "border-white/10 bg-[#050816]" : "border-slate-200 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                      Saldo
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold">Atualizar saldo</h3>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Informe o valor e a descrição da atualização.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setSupplementalModalOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+
+                <div className="mt-4 space-y-3 text-sm">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={supplementalInput}
+                    onChange={(event) => setSupplementalInput(event.target.value)}
+                    placeholder="Valor do saldo (R$)"
+                    className={cn(
+                      "h-10 rounded-xl text-sm",
+                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                    )}
+                  />
+                  <Textarea
+                    value={supplementalDescription}
+                    onChange={(event) => setSupplementalDescription(event.target.value)}
+                    placeholder="Descreva o motivo da atualização *"
+                    className={cn(
+                      "min-h-[80px] rounded-xl text-sm",
+                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                    )}
+                  />
+                  {supplementalError && (
+                    <p className="text-xs text-rose-400">{supplementalError}</p>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setSupplementalModalOpen(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      className="rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                      disabled={supplementalSaving}
+                      onClick={async () => {
+                        const value = Number(supplementalInput);
+                        if (!Number.isFinite(value) || value < 0) {
+                          setSupplementalError("Informe um valor válido.");
+                          return;
+                        }
+                        if (!supplementalDescription.trim()) {
+                          setSupplementalError("Informe a descrição do ajuste.");
+                          return;
+                        }
+                        setSupplementalSaving(true);
+                        setSupplementalError(null);
+                        try {
+                          const response = await fetch("/api/contracts/settings", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              supplementalBalance: value,
+                              supplementalDescription: supplementalDescription.trim(),
+                            }),
+                          });
+                          const data = await response.json().catch(() => null);
+                          if (!response.ok) {
+                            throw new Error(data?.error || "Não foi possível salvar.");
+                          }
+                          setSupplementalBalance(data?.supplementalBalance ?? value);
+                          setSupplementalInput(String(data?.supplementalBalance ?? value));
+                          if (Array.isArray(data?.supplementalHistory)) {
+                            setSupplementalHistory(data.supplementalHistory);
+                          }
+                          setSupplementalDescription("");
+                          setSupplementalModalOpen(false);
+                        } catch (err) {
+                          setSupplementalError(
+                            err instanceof Error ? err.message : "Falha ao salvar saldo."
+                          );
+                        } finally {
+                          setSupplementalSaving(false);
+                        }
+                      }}
+                    >
+                      {supplementalSaving ? "Salvando..." : "Salvar saldo"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>,
+            portalTarget
+          )
+        : null}
+      {portalTarget && historyModalOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div
+                className={cn(
+                  "w-full max-w-2xl rounded-3xl border p-6",
+                  isDark ? "border-white/10 bg-[#050816]" : "border-slate-200 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                      Histórico do saldo
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold">
+                      Ajustes do saldo
+                    </h3>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Veja todas as alterações registradas.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setHistoryModalOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+                <div className="mt-4 space-y-2 text-sm">
+                  {supplementalHistory.length === 0 ? (
+                    <p className="text-zinc-400">Nenhuma atualização registrada.</p>
+                  ) : (
+                    supplementalHistory.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={cn(
+                          "rounded-xl border px-3 py-3",
+                          isDark
+                            ? "border-white/10 bg-black/30 text-zinc-200"
+                            : "border-slate-200 bg-white text-slate-700"
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold">
+                            {formatCurrency(entry.amount, "BRL")}
+                          </p>
+                          <p className="text-[11px] text-zinc-500">
+                            {new Date(entry.created_at).toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                        <p className="mt-2 text-sm">{entry.description}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>,
+            portalTarget
+          )
+        : null}
+      {portalTarget && expiringModalOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div
+                className={cn(
+                  "w-full max-w-md rounded-3xl border p-6",
+                  isDark ? "border-white/10 bg-[#050816]" : "border-slate-200 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                      Janela de vencimento
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold">Ajustar prazo</h3>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Defina em quantos dias um contrato entra em “Vencendo”.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setExpiringModalOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+                <div className="mt-4 space-y-3 text-sm">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={expiringInput}
+                    onChange={(event) => setExpiringInput(event.target.value)}
+                    className={cn(
+                      "h-10 rounded-xl text-sm",
+                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                    )}
+                  />
+                  {expiringError && (
+                    <p className="text-xs text-rose-400">{expiringError}</p>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setExpiringModalOpen(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      className="rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                      disabled={expiringSaving}
+                      onClick={async () => {
+                        const value = Number(expiringInput);
+                        if (!Number.isFinite(value) || value <= 0) {
+                          setExpiringError("Informe um número válido em dias.");
+                          return;
+                        }
+                        setExpiringSaving(true);
+                        setExpiringError(null);
+                        try {
+                          const response = await fetch("/api/contracts/settings", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ expiringDays: value }),
+                          });
+                          const data = await response.json().catch(() => null);
+                          if (!response.ok) {
+                            throw new Error(data?.error || "Não foi possível salvar.");
+                          }
+                          setExpiringDays(data?.expiringDays ?? value);
+                          setExpiringInput(String(data?.expiringDays ?? value));
+                          setExpiringModalOpen(false);
+                        } catch (err) {
+                          setExpiringError(
+                            err instanceof Error ? err.message : "Falha ao salvar prazo."
+                          );
+                        } finally {
+                          setExpiringSaving(false);
+                        }
+                      }}
+                    >
+                      {expiringSaving ? "Salvando..." : "Salvar"}
                     </Button>
                   </div>
                 </div>

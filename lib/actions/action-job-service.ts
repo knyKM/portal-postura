@@ -4,8 +4,17 @@ import { getLocalTimestamp } from "@/lib/utils/time";
 export type ActionExecutionJobRecord = {
   id: number;
   request_id: number;
-  status: "queued" | "running" | "paused" | "completed" | "failed";
+  status:
+    | "queued"
+    | "running"
+    | "paused"
+    | "completed"
+    | "failed"
+    | "frozen"
+    | "cancelled"
+    | "returned";
   error_message: string | null;
+  error_status_code: number | null;
   total_issues: number | null;
   processed_issues: number | null;
   created_at: string;
@@ -30,20 +39,30 @@ export function updateJobStatus({
   id,
   status,
   errorMessage,
+  errorStatusCode,
 }: {
   id: number;
   status: ActionExecutionJobRecord["status"];
   errorMessage?: string | null;
+  errorStatusCode?: number | null;
 }) {
   const stmt = db.prepare(
     `UPDATE action_execution_jobs
      SET status = ?,
          error_message = ?,
+         error_status_code = ?,
          started_at = CASE WHEN ? = 'running' THEN datetime('now','localtime') ELSE started_at END,
-         finished_at = CASE WHEN ? IN ('completed','failed') THEN datetime('now','localtime') ELSE finished_at END
+         finished_at = CASE WHEN ? IN ('completed','failed','cancelled','returned') THEN datetime('now','localtime') ELSE finished_at END
      WHERE id = ?`
   );
-  stmt.run(status, errorMessage ?? null, status, status, id);
+  stmt.run(
+    status,
+    errorMessage ?? null,
+    errorStatusCode ?? null,
+    status,
+    status,
+    id
+  );
   const fetch = db.prepare<ActionExecutionJobRecord>(
     "SELECT * FROM action_execution_jobs WHERE id = ?"
   );

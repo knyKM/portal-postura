@@ -88,7 +88,9 @@ export async function GET(request: Request) {
     : Math.max(1, Math.min(200, limitParam));
   const statusParam = searchParams.get("status");
   const normalizedStatus =
-    statusParam === "pending" || statusParam === "approved"
+    statusParam === "pending" ||
+    statusParam === "approved" ||
+    statusParam === "completed"
       ? statusParam
       : undefined;
 
@@ -97,7 +99,9 @@ export async function GET(request: Request) {
     if (session.role !== "admin") {
       records = records.filter(
         (suggestion) =>
-          suggestion.status === "approved" || suggestion.status === "pending"
+          suggestion.status === "approved" ||
+          suggestion.status === "pending" ||
+          suggestion.status === "completed"
       );
     }
     return NextResponse.json({ suggestions: records });
@@ -110,9 +114,9 @@ export async function GET(request: Request) {
   }
 }
 
-type UpdateSuggestionPayload = {
+  type UpdateSuggestionPayload = {
   id?: number;
-  status?: "approved" | "pending";
+  status?: "approved" | "pending" | "completed";
   implementationStage?: string;
 };
 
@@ -147,7 +151,11 @@ export async function PATCH(request: Request) {
   try {
     let record: SuggestionRecord | null = null;
     if (payload.status) {
-      if (payload.status !== "approved" && payload.status !== "pending") {
+      if (
+        payload.status !== "approved" &&
+        payload.status !== "pending" &&
+        payload.status !== "completed"
+      ) {
         return NextResponse.json(
           { error: "Status inválido informado." },
           { status: 400 }

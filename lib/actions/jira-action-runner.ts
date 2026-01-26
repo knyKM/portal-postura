@@ -79,8 +79,36 @@ function parseIssueIds(raw: string) {
     .filter(Boolean);
 }
 
+function detectCsvDelimiter(raw: string) {
+  let inQuotes = false;
+  let commaCount = 0;
+  let semicolonCount = 0;
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    const next = raw[index + 1];
+    if (char === "\"") {
+      if (inQuotes && next === "\"") {
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (!inQuotes) {
+      if (char === ",") commaCount += 1;
+      if (char === ";") semicolonCount += 1;
+      if (char === "\n" || char === "\r") {
+        break;
+      }
+    }
+  }
+  if (semicolonCount > commaCount) return ";";
+  return ",";
+}
+
 function parseCsvRows(raw: string) {
   const rows: string[][] = [];
+  const delimiter = detectCsvDelimiter(raw);
   let current = "";
   let row: string[] = [];
   let inQuotes = false;
@@ -112,7 +140,7 @@ function parseCsvRows(raw: string) {
       }
       continue;
     }
-    if (char === "," && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       pushCell();
       continue;
     }
@@ -648,15 +676,32 @@ export async function executeActionJob(jobId: number, requestId: number) {
   updateActionRequestExecutionStatus({ id: requestId, status: "running" });
   const targetRequest = getActionRequestById(requestId);
   if (!targetRequest) {
-    updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
-    updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
+    updateJobStatus({ id: jobId, status: "frozen", errorMessage: "Solicitação não encontrada." });
+    updateActionRequestExecutionStatus({
+      id: requestId,
+      status: "frozen",
+      errorMessage: "Solicitação não encontrada.",
+      errorStatusCode: 404,
+    });
+    await startQueuedJobs();
     return;
   }
 
   const jiraConfig = getJiraConfig(targetRequest.requester_id);
   if (!jiraConfig.url || !jiraConfig.token) {
-    updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
-    updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
+    updateJobStatus({
+      id: jobId,
+      status: "frozen",
+      errorMessage: "Integração Jira não configurada para o solicitante.",
+      errorStatusCode: 400,
+    });
+    updateActionRequestExecutionStatus({
+      id: requestId,
+      status: "frozen",
+      errorMessage: "Integração Jira não configurada para o solicitante.",
+      errorStatusCode: 400,
+    });
+    await startQueuedJobs();
     return;
   }
 
@@ -679,18 +724,40 @@ export async function executeActionJob(jobId: number, requestId: number) {
     }
   } catch (err) {
     if (err instanceof JiraApiError) {
-      updateJobStatus({ id: jobId, status: "failed", errorMessage: err.message });
-      updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: err.message });
+      updateJobStatus({
+        id: jobId,
+        status: "frozen",
+        errorMessage: err.message,
+        errorStatusCode: err.status,
+      });
+      updateActionRequestExecutionStatus({
+        id: requestId,
+        status: "frozen",
+        errorMessage: err.message,
+        errorStatusCode: err.status,
+      });
+      await startQueuedJobs();
       return;
     }
-    updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
-    updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
+    updateJobStatus({ id: jobId, status: "frozen", errorMessage: "Falha ao preparar execução." });
+    updateActionRequestExecutionStatus({
+      id: requestId,
+      status: "frozen",
+      errorMessage: "Falha ao preparar execução.",
+    });
+    await startQueuedJobs();
     return;
   }
 
   if (!issueKeys.length) {
-    updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
-    updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
+    updateJobStatus({ id: jobId, status: "frozen", errorMessage: "Nenhuma issue encontrada." });
+    updateActionRequestExecutionStatus({
+      id: requestId,
+      status: "frozen",
+      errorMessage: "Nenhuma issue encontrada.",
+      errorStatusCode: 404,
+    });
+    await startQueuedJobs();
     return;
   }
 
@@ -829,12 +896,28 @@ export async function executeActionJob(jobId: number, requestId: number) {
       updateJobProgress({ id: jobId, processedIssues: processedCount });
     } catch (err) {
       if (err instanceof JiraApiError) {
-        updateJobStatus({ id: jobId, status: "failed", errorMessage: err.message });
-        updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: err.message });
+        updateJobStatus({
+          id: jobId,
+          status: "frozen",
+          errorMessage: err.message,
+          errorStatusCode: err.status,
+        });
+        updateActionRequestExecutionStatus({
+          id: requestId,
+          status: "frozen",
+          errorMessage: err.message,
+          errorStatusCode: err.status,
+        });
+        await startQueuedJobs();
         return;
       }
-      updateJobStatus({ id: jobId, status: "failed", errorMessage: "" });
-      updateActionRequestExecutionStatus({ id: requestId, status: "failed", errorMessage: "" });
+      updateJobStatus({ id: jobId, status: "frozen", errorMessage: "Falha ao executar automação." });
+      updateActionRequestExecutionStatus({
+        id: requestId,
+        status: "frozen",
+        errorMessage: "Falha ao executar automação.",
+      });
+      await startQueuedJobs();
       return;
     }
   }

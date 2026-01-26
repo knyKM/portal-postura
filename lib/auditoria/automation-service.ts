@@ -100,6 +100,7 @@ function mapRowToJob(row: AutomationJobRow): AutomationJob {
 function mapLogRow(row: AutomationLogRow): AutomationLog {
   return {
     jobId: row.job_id,
+    createdAt: row.created_at,
     message: row.message,
     level: row.level as AutomationLogLevel | undefined,
     timestamp: formatTimestamp(row.created_at),

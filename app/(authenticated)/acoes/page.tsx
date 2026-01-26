@@ -289,6 +289,32 @@ export default function AcoesPage() {
 
   function parseCsvRows(raw: string) {
     const rows: string[][] = [];
+    const detectDelimiter = () => {
+      let inQuotes = false;
+      let commaCount = 0;
+      let semicolonCount = 0;
+      for (let index = 0; index < raw.length; index += 1) {
+        const char = raw[index];
+        const next = raw[index + 1];
+        if (char === "\"") {
+          if (inQuotes && next === "\"") {
+            index += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+        if (!inQuotes) {
+          if (char === ",") commaCount += 1;
+          if (char === ";") semicolonCount += 1;
+          if (char === "\n" || char === "\r") {
+            break;
+          }
+        }
+      }
+      return semicolonCount > commaCount ? ";" : ",";
+    };
+    const delimiter = detectDelimiter();
     let current = "";
     let row: string[] = [];
     let inQuotes = false;
@@ -320,7 +346,7 @@ export default function AcoesPage() {
         }
         continue;
       }
-      if (char === "," && !inQuotes) {
+      if (char === delimiter && !inQuotes) {
         pushCell();
         continue;
       }

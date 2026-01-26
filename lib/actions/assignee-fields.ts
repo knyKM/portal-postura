@@ -2,6 +2,7 @@ export const ASSIGNEE_CUSTOM_FIELDS = [
   { id: "customfield_11702", label: "Área Proprietária Ativo Diretor_LB" },
   { id: "customfield_11704", label: "Área Proprietária Ativo Ponto Focal_LB" },
   { id: "customfield_11703", label: "Área Proprietária Ativo Gerente Sr_LB" },
+  { id: "customfield_10407", label: "VP" },
   { id: "customfield_11706", label: "Área Solucionadora Responsável Gerente Sr_LB" },
   { id: "customfield_11705", label: "Área Solucionadora Responsável Diretor_LB" },
   { id: "customfield_11707", label: "Área Solucionadora Responsável Ponto Focal_LB" },

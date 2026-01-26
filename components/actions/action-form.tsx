@@ -569,7 +569,12 @@ export function ActionForm(props: ActionFormProps) {
                   <div className="mt-3 space-y-3">
                     {assigneeFields
                       .filter((field) =>
-                        ["customfield_11702", "customfield_11703", "customfield_11704"].includes(
+                        [
+                          "customfield_11702",
+                          "customfield_11703",
+                          "customfield_11704",
+                          "customfield_10407",
+                        ].includes(
                           field.id
                         )
                       )
