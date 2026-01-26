@@ -7,6 +7,7 @@ export type ContractRecord = {
   vendor: string;
   owner: string;
   area: string | null;
+  lpu: string | null;
   contract_type: string | null;
   segment: string | null;
   sap_contract: string | null;
@@ -31,6 +32,7 @@ export type ContractInput = {
   vendor: string;
   owner: string;
   area?: string | null;
+  lpu?: string | null;
   contractType?: string | null;
   segment?: string | null;
   sapContract?: string | null;
@@ -55,7 +57,7 @@ export type ContractUpdatePayload = ContractInput & {
 export function listContracts() {
   return db
     .prepare<ContractRecord>(
-      `SELECT id, title, vendor, owner, area, contract_type, segment, sap_contract, contract_year,
+      `SELECT id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract, contract_year,
               contract_scope, management, supplemental_used, status, start_date, end_date,
               alert_days, value_amount, value_currency, description, notes, created_at, updated_at
        FROM contracts
@@ -67,7 +69,7 @@ export function listContracts() {
 export function getContractById(id: number) {
   return db
     .prepare<ContractRecord>(
-      `SELECT id, title, vendor, owner, area, contract_type, segment, sap_contract, contract_year,
+      `SELECT id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract, contract_year,
               contract_scope, management, supplemental_used, status, start_date, end_date,
               alert_days, value_amount, value_currency, description, notes, created_at, updated_at
        FROM contracts
@@ -81,11 +83,11 @@ export function createContract(input: ContractInput) {
   const record = db
     .prepare<ContractRecord>(
       `INSERT INTO contracts
-        (title, vendor, owner, area, contract_type, segment, sap_contract, contract_year,
+        (title, vendor, owner, area, lpu, contract_type, segment, sap_contract, contract_year,
          contract_scope, management, supplemental_used, status, start_date, end_date, alert_days,
          value_amount, value_currency, description, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       RETURNING id, title, vendor, owner, area, contract_type, segment, sap_contract,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract,
                  contract_year, contract_scope, management, supplemental_used, status, start_date,
                  end_date,
                  alert_days, value_amount, value_currency, description, notes, created_at, updated_at`
@@ -95,6 +97,7 @@ export function createContract(input: ContractInput) {
       input.vendor,
       input.owner,
       input.area ?? null,
+      input.lpu ?? null,
       input.contractType ?? null,
       input.segment ?? null,
       input.sapContract ?? null,
@@ -122,12 +125,12 @@ export function updateContract(input: ContractUpdatePayload) {
   const record = db
     .prepare<ContractRecord>(
       `UPDATE contracts
-       SET title = ?, vendor = ?, owner = ?, area = ?, contract_type = ?, segment = ?,
+       SET title = ?, vendor = ?, owner = ?, area = ?, lpu = ?, contract_type = ?, segment = ?,
            sap_contract = ?, contract_year = ?, contract_scope = ?, management = ?,
            supplemental_used = ?, status = ?, start_date = ?, end_date = ?, alert_days = ?,
            value_amount = ?, value_currency = ?, description = ?, notes = ?, updated_at = ?
        WHERE id = ?
-       RETURNING id, title, vendor, owner, area, contract_type, segment, sap_contract,
+       RETURNING id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract,
                  contract_year, contract_scope, management, supplemental_used, status, start_date,
                  end_date,
                  alert_days, value_amount, value_currency, description, notes, created_at, updated_at`
@@ -137,6 +140,7 @@ export function updateContract(input: ContractUpdatePayload) {
       input.vendor,
       input.owner,
       input.area ?? null,
+      input.lpu ?? null,
       input.contractType ?? null,
       input.segment ?? null,
       input.sapContract ?? null,

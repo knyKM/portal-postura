@@ -15,6 +15,7 @@ type ContractPayload = {
   vendor?: string;
   owner?: string;
   area?: string | null;
+  lpu?: string | null;
   contractType?: string | null;
   segment?: string | null;
   sapContract?: string | null;
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
   const description =
     typeof payload.description === "string" ? payload.description.trim() : "";
   const area = typeof payload.area === "string" ? payload.area.trim() : "";
+  const lpu = typeof payload.lpu === "string" ? payload.lpu.trim() : "";
   const contractType =
     typeof payload.contractType === "string" ? payload.contractType.trim() : "";
   const segment = typeof payload.segment === "string" ? payload.segment.trim() : "";
@@ -138,6 +140,7 @@ export async function POST(request: Request) {
       vendor,
       owner,
       area: area || null,
+      lpu: lpu || null,
       contractType: contractType || null,
       segment: segment || null,
       sapContract: sapContract || null,
@@ -189,6 +192,7 @@ export async function PATCH(request: Request) {
   const description =
     typeof payload.description === "string" ? payload.description.trim() : "";
   const area = typeof payload.area === "string" ? payload.area.trim() : "";
+  const lpu = typeof payload.lpu === "string" ? payload.lpu.trim() : "";
   const contractType =
     typeof payload.contractType === "string" ? payload.contractType.trim() : "";
   const segment = typeof payload.segment === "string" ? payload.segment.trim() : "";
@@ -255,6 +259,7 @@ export async function PATCH(request: Request) {
       vendor,
       owner,
       area: area || null,
+      lpu: lpu || null,
       contractType: contractType || null,
       segment: segment || null,
       sapContract: sapContract || null,

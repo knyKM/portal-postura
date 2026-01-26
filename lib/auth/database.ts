@@ -696,6 +696,7 @@ db.exec(`
     vendor TEXT NOT NULL,
     owner TEXT NOT NULL,
     area TEXT,
+    lpu TEXT,
     contract_type TEXT,
     segment TEXT,
     sap_contract TEXT,
@@ -723,6 +724,7 @@ db.exec(`
 const contractsTableInfo = db
   .prepare("PRAGMA table_info(contracts)")
   .all() as TableInfoRow[];
+const hasContractLpu = contractsTableInfo.some((column) => column.name === "lpu");
 const hasContractSegment = contractsTableInfo.some((column) => column.name === "segment");
 const hasContractSap = contractsTableInfo.some((column) => column.name === "sap_contract");
 const hasContractYear = contractsTableInfo.some((column) => column.name === "contract_year");
@@ -733,6 +735,9 @@ const hasContractSupplementalUsed = contractsTableInfo.some(
 );
 if (!hasContractSegment) {
   db.exec("ALTER TABLE contracts ADD COLUMN segment TEXT");
+}
+if (!hasContractLpu) {
+  db.exec("ALTER TABLE contracts ADD COLUMN lpu TEXT");
 }
 if (!hasContractSap) {
   db.exec("ALTER TABLE contracts ADD COLUMN sap_contract TEXT");

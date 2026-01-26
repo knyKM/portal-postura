@@ -19,6 +19,7 @@ type Contract = {
   vendor: string;
   owner: string;
   area: string | null;
+  lpu: string | null;
   contract_type: string | null;
   segment: string | null;
   sap_contract: string | null;
@@ -75,11 +76,37 @@ function formatCurrency(value: number | null, currency?: string | null) {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: code,
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2,
     }).format(value);
   } catch {
     return `${value} ${code}`.trim();
   }
+}
+
+function parseCurrencyInput(value: string) {
+  if (!value) return null;
+  const cleaned = value.replace(/[^\d,.-]/g, "");
+  if (!cleaned) return null;
+  const hasComma = cleaned.includes(",");
+  const hasDot = cleaned.includes(".");
+  let normalized = cleaned;
+  if (hasComma && hasDot) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    normalized = cleaned.replace(",", ".");
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatCurrencyInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  const padded = digits.padStart(3, "0");
+  const integerPart = padded.slice(0, -2);
+  const decimalPart = padded.slice(-2);
+  const withThousands = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${withThousands},${decimalPart}`;
 }
 
 function getDaysRemaining(endDate: string) {
@@ -127,6 +154,7 @@ export default function GestaoContratosPage() {
   const [vendor, setVendor] = useState("");
   const [owner, setOwner] = useState("");
   const [area, setArea] = useState("");
+  const [lpu, setLpu] = useState("");
   const [contractType, setContractType] = useState("");
   const [segmentSelect, setSegmentSelect] = useState("");
   const [segmentCustom, setSegmentCustom] = useState("");
@@ -221,6 +249,7 @@ export default function GestaoContratosPage() {
         contract.contract_year,
         contract.contract_scope,
         contract.management,
+        contract.lpu,
         contract.description,
       ]
         .filter(Boolean)
@@ -264,6 +293,14 @@ export default function GestaoContratosPage() {
     0,
     supplementalBalance - stats.supplementalUsedTotal
   );
+  const supplementalDraftUsed = supplementalUsed ? Number(supplementalUsed) : 0;
+  const supplementalDraftDelta = editingId
+    ? Math.max(0, supplementalDraftUsed - editingContractUsed)
+    : supplementalDraftUsed;
+  const supplementalVisible =
+    modalOpen && supplementalDraftUsed
+      ? Math.max(0, supplementalAvailable - supplementalDraftDelta)
+      : supplementalAvailable;
 
   const editingContractUsed = useMemo(() => {
     if (!editingId) return 0;
@@ -287,6 +324,7 @@ export default function GestaoContratosPage() {
     setVendor("");
     setOwner("");
     setArea("");
+    setLpu("");
     setContractType("");
     setSegmentSelect("");
     setSegmentCustom("");
@@ -332,6 +370,7 @@ export default function GestaoContratosPage() {
     setVendor(contract.vendor);
     setOwner(contract.owner);
     setArea(contract.area ?? "");
+    setLpu(contract.lpu ?? "");
     setContractType(contract.contract_type ?? "");
     setSegmentSelect(segmentResolved.selected);
     setSegmentCustom(segmentResolved.custom);
@@ -386,6 +425,7 @@ export default function GestaoContratosPage() {
       vendor,
       owner: responsibleValue || owner,
       area,
+      lpu,
       contractType,
       segment: segmentValue || null,
       sapContract,
@@ -396,7 +436,7 @@ export default function GestaoContratosPage() {
       startDate,
       endDate,
       alertDays: Number(alertDays),
-      valueAmount: valueAmount ? Number(valueAmount) : null,
+      valueAmount: valueAmount ? parseCurrencyInput(valueAmount) : null,
       valueCurrency,
       description,
       notes,
@@ -548,7 +588,7 @@ export default function GestaoContratosPage() {
             },
             {
               label: "Saldo",
-              value: formatCurrency(supplementalAvailable, "BRL"),
+              value: formatCurrency(supplementalVisible, "BRL"),
               icon: ShieldCheck,
               accent: "from-sky-500/20 via-sky-500/5 to-transparent",
               border: "border-sky-500/40",
@@ -760,6 +800,10 @@ export default function GestaoContratosPage() {
                         </p>
                       </div>
                       <div>
+                        <p className="uppercase tracking-[0.2em]">LPU</p>
+                        <p className="text-sm text-zinc-200">{contract.lpu ?? "—"}</p>
+                      </div>
+                      <div>
                         <p className="uppercase tracking-[0.2em]">Vigência</p>
                         <p className="text-sm text-zinc-200">
                           {new Date(contract.start_date).toLocaleDateString("pt-BR")} ·{" "}
@@ -899,6 +943,15 @@ export default function GestaoContratosPage() {
                     value={sapContract}
                     onChange={(event) => setSapContract(event.target.value)}
                     placeholder="Contrato SAP"
+                    className={cn(
+                      "h-10 rounded-xl text-sm",
+                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                    )}
+                  />
+                  <Input
+                    value={lpu}
+                    onChange={(event) => setLpu(event.target.value)}
+                    placeholder="LPU"
                     className={cn(
                       "h-10 rounded-xl text-sm",
                       isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
