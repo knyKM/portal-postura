@@ -102,11 +102,20 @@ function parseCurrencyInput(value: string) {
 function formatCurrencyInput(value: string) {
   const digits = value.replace(/\D/g, "");
   if (!digits) return "";
-  const padded = digits.padStart(3, "0");
-  const integerPart = padded.slice(0, -2);
+  const padded = digits.length <= 2 ? digits.padStart(3, "0") : digits;
+  const rawInteger = padded.length > 2 ? padded.slice(0, -2) : "0";
+  const integerPart = rawInteger.replace(/^0+(?=\d)/, "") || "0";
   const decimalPart = padded.slice(-2);
   const withThousands = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${withThousands},${decimalPart}`;
+}
+
+function formatPlainCurrency(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "";
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function getDaysRemaining(endDate: string) {
@@ -227,7 +236,7 @@ export default function GestaoContratosPage() {
         }
         if (typeof data?.supplementalBalance === "number") {
           setSupplementalBalance(data.supplementalBalance);
-          setSupplementalInput(String(data.supplementalBalance));
+          setSupplementalInput(formatPlainCurrency(data.supplementalBalance));
         }
         if (Array.isArray(data?.supplementalHistory)) {
           setSupplementalHistory(data.supplementalHistory);
@@ -289,19 +298,10 @@ export default function GestaoContratosPage() {
     return { active, expiring, expired, supplementalUsedTotal };
   }, [contracts, expiringDays]);
 
-  const supplementalAvailable = Math.max(
-    0,
-    supplementalBalance - stats.supplementalUsedTotal
-  );
-  const supplementalDraftUsed = supplementalUsed ? Number(supplementalUsed) : 0;
-  const supplementalDraftDelta = editingId
-    ? Math.max(0, supplementalDraftUsed - editingContractUsed)
-    : supplementalDraftUsed;
-  const supplementalVisible =
-    modalOpen && supplementalDraftUsed
-      ? Math.max(0, supplementalAvailable - supplementalDraftDelta)
-      : supplementalAvailable;
-
+  const safeBalance = Number.isFinite(supplementalBalance) ? supplementalBalance : 0;
+  const safeUsedTotal = Number.isFinite(stats.supplementalUsedTotal)
+    ? stats.supplementalUsedTotal
+    : 0;
   const editingContractUsed = useMemo(() => {
     if (!editingId) return 0;
     const contract = contracts.find((item) => item.id === editingId);
@@ -309,6 +309,18 @@ export default function GestaoContratosPage() {
       ? contract.supplemental_used
       : 0;
   }, [editingId, contracts]);
+
+  const supplementalAvailable = Math.max(0, safeBalance - safeUsedTotal);
+  const supplementalDraftUsed = supplementalUsed
+    ? parseCurrencyInput(supplementalUsed) ?? 0
+    : 0;
+  const supplementalDraftDelta = editingId
+    ? Math.max(0, supplementalDraftUsed - editingContractUsed)
+    : supplementalDraftUsed;
+  const supplementalVisible =
+    modalOpen && supplementalDraftUsed
+      ? Math.max(0, supplementalAvailable - supplementalDraftDelta)
+      : supplementalAvailable;
 
   const contractYearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -392,13 +404,13 @@ export default function GestaoContratosPage() {
     setStartDate(contract.start_date);
     setEndDate(contract.end_date);
     setAlertDays(String(contract.alert_days ?? 30));
-    setValueAmount(contract.value_amount?.toString() ?? "");
+    setValueAmount(formatPlainCurrency(contract.value_amount));
     setValueCurrency(contract.value_currency ?? "BRL");
     setDescription(contract.description ?? "");
     setNotes(contract.notes ?? "");
     setSupplementalUsed(
       typeof contract.supplemental_used === "number"
-        ? contract.supplemental_used.toString()
+        ? formatPlainCurrency(contract.supplemental_used)
         : ""
     );
     setSupplementalFieldError(null);
@@ -440,7 +452,7 @@ export default function GestaoContratosPage() {
       valueCurrency,
       description,
       notes,
-      supplementalUsed: supplementalUsed ? Number(supplementalUsed) : null,
+      supplementalUsed: supplementalUsed ? parseCurrencyInput(supplementalUsed) : null,
     };
 
     if (payload.supplementalUsed !== null) {
@@ -1027,7 +1039,9 @@ export default function GestaoContratosPage() {
                   )}
                   <Input
                     value={valueAmount}
-                    onChange={(event) => setValueAmount(event.target.value)}
+                    onChange={(event) =>
+                      setValueAmount(formatCurrencyInput(event.target.value))
+                    }
                     placeholder="Valor adjudicado (R$)"
                     className={cn(
                       "h-10 rounded-xl text-sm",
@@ -1035,11 +1049,10 @@ export default function GestaoContratosPage() {
                     )}
                   />
                   <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
                     value={supplementalUsed}
-                    onChange={(event) => setSupplementalUsed(event.target.value)}
+                    onChange={(event) =>
+                      setSupplementalUsed(formatCurrencyInput(event.target.value))
+                    }
                     placeholder="Saldo utilizado (R$)"
                     className={cn(
                       "h-10 rounded-xl text-sm",
@@ -1241,11 +1254,10 @@ export default function GestaoContratosPage() {
 
                 <div className="mt-4 space-y-3 text-sm">
                   <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
                     value={supplementalInput}
-                    onChange={(event) => setSupplementalInput(event.target.value)}
+                    onChange={(event) =>
+                      setSupplementalInput(formatCurrencyInput(event.target.value))
+                    }
                     placeholder="Valor do saldo (R$)"
                     className={cn(
                       "h-10 rounded-xl text-sm",
@@ -1277,7 +1289,7 @@ export default function GestaoContratosPage() {
                       className="rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
                       disabled={supplementalSaving}
                       onClick={async () => {
-                        const value = Number(supplementalInput);
+                        const value = parseCurrencyInput(supplementalInput);
                         if (!Number.isFinite(value) || value < 0) {
                           setSupplementalError("Informe um valor válido.");
                           return;
@@ -1301,8 +1313,12 @@ export default function GestaoContratosPage() {
                           if (!response.ok) {
                             throw new Error(data?.error || "Não foi possível salvar.");
                           }
-                          setSupplementalBalance(data?.supplementalBalance ?? value);
-                          setSupplementalInput(String(data?.supplementalBalance ?? value));
+                          const nextBalance =
+                            typeof data?.supplementalBalance === "number"
+                              ? data.supplementalBalance
+                              : value ?? 0;
+                          setSupplementalBalance(nextBalance);
+                          setSupplementalInput(formatPlainCurrency(nextBalance));
                           if (Array.isArray(data?.supplementalHistory)) {
                             setSupplementalHistory(data.supplementalHistory);
                           }

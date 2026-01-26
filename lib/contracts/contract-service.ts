@@ -86,7 +86,7 @@ export function createContract(input: ContractInput) {
         (title, vendor, owner, area, lpu, contract_type, segment, sap_contract, contract_year,
          contract_scope, management, supplemental_used, status, start_date, end_date, alert_days,
          value_amount, value_currency, description, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract,
                  contract_year, contract_scope, management, supplemental_used, status, start_date,
                  end_date,
