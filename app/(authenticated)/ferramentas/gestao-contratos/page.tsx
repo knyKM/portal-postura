@@ -289,9 +289,20 @@ export default function GestaoContratosPage() {
     let expiring = 0;
     let expired = 0;
     let supplementalUsedTotal = 0;
+    let totalAdjudicatedActive = 0;
     contracts.forEach((contract) => {
-      const daysRemaining = getDaysRemaining(contract.end_date);
       if (contract.status === "encerrado") return;
+      if (typeof contract.supplemental_used === "number") {
+        supplementalUsedTotal += contract.supplemental_used;
+      }
+      if (
+        contract.status === "ativo" &&
+        typeof contract.value_amount === "number" &&
+        (contract.value_currency ?? "BRL") === "BRL"
+      ) {
+        totalAdjudicatedActive += contract.value_amount;
+      }
+      const daysRemaining = getDaysRemaining(contract.end_date);
       if (daysRemaining !== null && daysRemaining < 0) {
         expired += 1;
         return;
@@ -305,11 +316,8 @@ export default function GestaoContratosPage() {
       if (start && start <= startOfToday) {
         active += 1;
       }
-      if (typeof contract.supplemental_used === "number") {
-        supplementalUsedTotal += contract.supplemental_used;
-      }
     });
-    return { active, expiring, expired, supplementalUsedTotal };
+    return { active, expiring, expired, supplementalUsedTotal, totalAdjudicatedActive };
   }, [contracts, expiringDays]);
 
   const safeBalance = Number.isFinite(supplementalBalance) ? supplementalBalance : 0;
@@ -590,7 +598,7 @@ export default function GestaoContratosPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
           {[
             {
               label: "Ativos",
@@ -619,6 +627,13 @@ export default function GestaoContratosPage() {
               icon: ShieldCheck,
               accent: "from-sky-500/20 via-sky-500/5 to-transparent",
               border: "border-sky-500/40",
+            },
+            {
+              label: "Valor adjudicado",
+              value: formatCurrency(stats.totalAdjudicatedActive, "BRL"),
+              icon: FileSignature,
+              accent: "from-indigo-500/20 via-indigo-500/5 to-transparent",
+              border: "border-indigo-500/40",
             },
           ].map((card) => (
             <Card
