@@ -225,6 +225,20 @@ export default function GestaoContratosPage() {
     return () => controller.abort();
   }, [loading]);
 
+  async function refreshContracts() {
+    setError(null);
+    try {
+      const response = await fetch("/api/contracts");
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível recarregar os contratos.");
+      }
+      setContracts(data?.contracts ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao recarregar contratos.");
+    }
+  }
+
   useEffect(() => {
     if (loading) return;
     fetch("/api/contracts/settings")
@@ -477,13 +491,14 @@ export default function GestaoContratosPage() {
       if (!response.ok) {
         throw new Error(data?.error || "Não foi possível salvar o contrato.");
       }
-      const updated = editingId ? data?.contract : data?.contract;
+      const updated = data?.contract;
       setContracts((prev) => {
         if (editingId) {
           return prev.map((item) => (item.id === editingId ? updated : item));
         }
         return [updated, ...prev];
       });
+      await refreshContracts();
       setModalOpen(false);
       resetForm();
     } catch (err) {

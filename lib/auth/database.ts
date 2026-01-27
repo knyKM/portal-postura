@@ -10,25 +10,6 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-try {
-  const dataDirStat = fs.lstatSync(dataDir);
-  if (dataDirStat.isSymbolicLink()) {
-    const resolvedDataDir = fs.realpathSync(dataDir);
-    console.info(`[db] data dir is a symlink -> ${resolvedDataDir}`);
-  } else {
-    console.warn(`[db] data dir is not a symlink: ${dataDir}`);
-  }
-  if (fs.existsSync(dbFile)) {
-    const dbStat = fs.lstatSync(dbFile);
-    if (dbStat.isSymbolicLink()) {
-      const resolvedDbFile = fs.realpathSync(dbFile);
-      console.info(`[db] auth.db is a symlink -> ${resolvedDbFile}`);
-    }
-  }
-} catch (error) {
-  console.warn("[db] unable to validate data path", error);
-}
-
 const db = new Database(dbFile);
 
 db.pragma("journal_mode = WAL");
