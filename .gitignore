@@ -33,3 +33,4 @@ offline-npm-cache.tgz
 offline-npm-cache*.tgz
 *.sst
 data/auth*
+AGENTS.md

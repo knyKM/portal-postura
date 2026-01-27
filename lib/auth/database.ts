@@ -704,6 +704,7 @@ db.exec(`
     owner TEXT NOT NULL,
     area TEXT,
     lpu TEXT,
+    lpu_image TEXT,
     contract_type TEXT,
     segment TEXT,
     sap_contract TEXT,
@@ -734,6 +735,9 @@ const contractsTableInfo = db
   .prepare("PRAGMA table_info(contracts)")
   .all() as TableInfoRow[];
 const hasContractLpu = contractsTableInfo.some((column) => column.name === "lpu");
+const hasContractLpuImage = contractsTableInfo.some(
+  (column) => column.name === "lpu_image"
+);
 const hasContractSegment = contractsTableInfo.some((column) => column.name === "segment");
 const hasContractSap = contractsTableInfo.some((column) => column.name === "sap_contract");
 const hasContractYear = contractsTableInfo.some((column) => column.name === "contract_year");
@@ -753,6 +757,9 @@ if (!hasContractSegment) {
 }
 if (!hasContractLpu) {
   db.exec("ALTER TABLE contracts ADD COLUMN lpu TEXT");
+}
+if (!hasContractLpuImage) {
+  db.exec("ALTER TABLE contracts ADD COLUMN lpu_image TEXT");
 }
 if (!hasContractSap) {
   db.exec("ALTER TABLE contracts ADD COLUMN sap_contract TEXT");

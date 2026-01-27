@@ -20,6 +20,7 @@ type Contract = {
   owner: string;
   area: string | null;
   lpu: string | null;
+  lpu_image: string | null;
   contract_type: string | null;
   segment: string | null;
   sap_contract: string | null;
@@ -209,8 +210,8 @@ export default function GestaoContratosPage() {
     string | null
   >(null);
   const [query, setQuery] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -247,6 +248,7 @@ export default function GestaoContratosPage() {
   const [supplementalUsed, setSupplementalUsed] = useState("");
 
   const portalTarget = typeof document !== "undefined" ? document.body : null;
+  const [expandedLpuIds, setExpandedLpuIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -427,10 +429,7 @@ export default function GestaoContratosPage() {
   const supplementalDraftDelta = editingId
     ? Math.max(0, supplementalDraftUsed - editingContractUsed)
     : supplementalDraftUsed;
-  const supplementalVisible =
-    modalOpen && supplementalDraftUsed
-      ? Math.max(0, supplementalAvailable - supplementalDraftDelta)
-      : supplementalAvailable;
+  const supplementalVisible = supplementalAvailable;
 
   const contractYearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -452,6 +451,7 @@ export default function GestaoContratosPage() {
     setOwner("");
     setArea("");
     setLpu("");
+    setLpuImage(null);
     setContractType("");
     setSegmentSelect("");
     setSegmentCustom("");
@@ -479,64 +479,16 @@ export default function GestaoContratosPage() {
     setSupplementalFieldError(null);
   }
 
-  function openNewModal() {
-    resetForm();
-    setEditingId(null);
-    setModalOpen(true);
-  }
-
-  function openEditModal(contract: Contract) {
-    const segmentResolved = resolveSelectValue(contract.segment ?? "", segmentOptions);
-    const scopeResolved = resolveSelectValue(contract.contract_scope ?? "", scopeOptions);
-    const managementResolved = resolveSelectValue(
-      contract.management ?? "",
-      managementOptions
-    );
-    const responsibleResolved = resolveSelectValue(
-      contract.owner ?? "",
-      responsibleOptions
-    );
-    setTitle(contract.title);
-    setVendor(contract.vendor);
-    setOwner(contract.owner);
-    setArea(contract.area ?? "");
-    setLpu(contract.lpu ?? "");
-    setContractType(contract.contract_type ?? "");
-    setSegmentSelect(segmentResolved.selected);
-    setSegmentCustom(segmentResolved.custom);
-    setSapContract(contract.sap_contract ?? "");
-    if (contract.contract_year && !contractYearOptions.includes(contract.contract_year)) {
-      setContractYear(CUSTOM_OPTION_VALUE);
-      setContractYearCustom(contract.contract_year);
-    } else {
-      setContractYear(contract.contract_year ?? "");
-      setContractYearCustom("");
-    }
-    setScopeSelect(scopeResolved.selected);
-    setScopeCustom(scopeResolved.custom);
-    setManagementSelect(managementResolved.selected);
-    setManagementCustom(managementResolved.custom);
-    setResponsibleSelect(responsibleResolved.selected);
-    setResponsibleCustom(responsibleResolved.custom);
-    setPaymentType(contract.payment_type ?? "oneshot");
-    setPaymentSchedule(parseScheduleJson(contract.payment_schedule_json));
-    setScheduleYear("");
-    setStatus(contract.status);
-    setStartDate(contract.start_date);
-    setEndDate(contract.end_date);
-    setAlertDays(String(contract.alert_days ?? 30));
-    setValueAmount(formatPlainCurrency(contract.value_amount));
-    setValueCurrency(contract.value_currency ?? "BRL");
-    setDescription(contract.description ?? "");
-    setNotes(contract.notes ?? "");
-    setSupplementalUsed(
-      typeof contract.supplemental_used === "number"
-        ? formatPlainCurrency(contract.supplemental_used)
-        : ""
-    );
-    setSupplementalFieldError(null);
-    setEditingId(contract.id);
-    setModalOpen(true);
+  function toggleLpu(contractId: number) {
+    setExpandedLpuIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(contractId)) {
+        next.delete(contractId);
+      } else {
+        next.add(contractId);
+      }
+      return next;
+    });
   }
 
   async function handleSave() {
@@ -574,6 +526,7 @@ export default function GestaoContratosPage() {
       owner: responsibleValue || owner,
       area,
       lpu,
+      lpuImage,
       contractType,
       segment: segmentValue || null,
       sapContract,
@@ -649,7 +602,7 @@ export default function GestaoContratosPage() {
         return [updated, ...prev];
       });
       await refreshContracts();
-      setModalOpen(false);
+      setFormOpen(false);
       resetForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao salvar contrato.");
@@ -732,7 +685,7 @@ export default function GestaoContratosPage() {
               <Button
                 type="button"
                 className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
-                onClick={openNewModal}
+                onClick={() => router.push("/ferramentas/gestao-contratos/novo")}
               >
                 Cadastrar contrato
               </Button>
@@ -913,6 +866,8 @@ export default function GestaoContratosPage() {
               const statusLabel =
                 statusOptions.find((option) => option.value === contract.status)?.label ??
                 contract.status;
+              const hasLpu = Boolean(contract.lpu) || Boolean(contract.lpu_image);
+              const lpuExpanded = expandedLpuIds.has(contract.id);
               return (
                 <Card
                   key={contract.id}
@@ -992,7 +947,43 @@ export default function GestaoContratosPage() {
                       </div>
                       <div>
                         <p className="uppercase tracking-[0.2em]">LPU</p>
-                        <p className="text-sm text-zinc-200">{contract.lpu ?? "—"}</p>
+                        {hasLpu ? (
+                          <div className="mt-1 space-y-2">
+                            {lpuExpanded ? (
+                              <>
+                                {contract.lpu && (
+                                  <p className="text-sm text-zinc-200">{contract.lpu}</p>
+                                )}
+                                {contract.lpu_image && (
+                                  <img
+                                    src={contract.lpu_image}
+                                    alt="LPU"
+                                    className="max-h-40 w-full rounded-xl border border-white/10 object-contain"
+                                  />
+                                )}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => toggleLpu(contract.id)}
+                                >
+                                  Ocultar
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => toggleLpu(contract.id)}
+                              >
+                                Exibir LPU
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-zinc-200">—</p>
+                        )}
                       </div>
                       <div>
                         <p className="uppercase tracking-[0.2em]">Vigência</p>
@@ -1026,7 +1017,11 @@ export default function GestaoContratosPage() {
                         <Button
                           type="button"
                           variant="secondary"
-                          onClick={() => openEditModal(contract)}
+                          onClick={() =>
+                            router.push(
+                              `/ferramentas/gestao-contratos/editar/${contract.id}`
+                            )
+                          }
                         >
                           Editar
                         </Button>
@@ -1047,509 +1042,6 @@ export default function GestaoContratosPage() {
           )}
         </section>
       </div>
-
-      {portalTarget && modalOpen
-        ? createPortal(
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-              <div
-                className={cn(
-                  "w-full max-w-3xl rounded-3xl border p-6",
-                  isDark ? "border-white/10 bg-[#050816]" : "border-slate-200 bg-white"
-                )}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
-                      {editingId ? "Editar contrato" : "Novo contrato"}
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold">
-                      {editingId ? "Atualize as informações" : "Cadastrar contrato"}
-                    </h3>
-                    <p className="mt-1 text-xs text-zinc-400">
-                      Campos com * são obrigatórios.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setModalOpen(false)}
-                  >
-                    Fechar
-                  </Button>
-                </div>
-
-                <div className="mt-4 grid gap-4 text-sm md:grid-cols-2">
-                  <Input
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Objeto do contrato *"
-                    required
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <Input
-                    value={vendor}
-                    onChange={(event) => setVendor(event.target.value)}
-                    placeholder="Fornecedor *"
-                    required
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <select
-                    value={segmentSelect}
-                    onChange={(event) => setSegmentSelect(event.target.value)}
-                    className={cn(
-                      "h-10 rounded-xl border px-3 text-sm",
-                      isDark
-                        ? "border-white/10 bg-black/40 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    <option value="">Selecionar segmento</option>
-                    {segmentOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
-                  </select>
-                  {segmentSelect === CUSTOM_OPTION_VALUE && (
-                    <Input
-                      value={segmentCustom}
-                      onChange={(event) => setSegmentCustom(event.target.value)}
-                      placeholder="Novo segmento"
-                      className={cn(
-                        "h-10 rounded-xl text-sm",
-                        isDark
-                          ? "border-white/10 bg-black/40 text-white"
-                          : "border-slate-200"
-                      )}
-                    />
-                  )}
-                  <Input
-                    value={sapContract}
-                    onChange={(event) => setSapContract(event.target.value)}
-                    placeholder="Contrato SAP"
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <Textarea
-                    value={lpu}
-                    onChange={(event) => setLpu(event.target.value)}
-                    placeholder="LPU"
-                    className={cn(
-                      "min-h-[80px] rounded-xl text-sm md:col-span-2",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <select
-                    value={contractYear}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setContractYear(next);
-                      if (next !== CUSTOM_OPTION_VALUE) {
-                        setContractYearCustom("");
-                      }
-                    }}
-                    className={cn(
-                      "h-10 rounded-xl border px-3 text-sm",
-                      isDark
-                        ? "border-white/10 bg-black/40 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    <option value="">Selecionar ano do contrato</option>
-                    {contractYearOptions.map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
-                  </select>
-                  {contractYear === CUSTOM_OPTION_VALUE && (
-                    <Input
-                      value={contractYearCustom}
-                      onChange={(event) => setContractYearCustom(event.target.value)}
-                      placeholder="Ano personalizado"
-                      className={cn(
-                        "h-10 rounded-xl text-sm",
-                        isDark
-                          ? "border-white/10 bg-black/40 text-white"
-                          : "border-slate-200"
-                      )}
-                    />
-                  )}
-                  <select
-                    value={scopeSelect}
-                    onChange={(event) => setScopeSelect(event.target.value)}
-                    className={cn(
-                      "h-10 rounded-xl border px-3 text-sm",
-                      isDark
-                        ? "border-white/10 bg-black/40 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    <option value="">Selecionar escopo</option>
-                    {scopeOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
-                  </select>
-                  {scopeSelect === CUSTOM_OPTION_VALUE && (
-                    <Input
-                      value={scopeCustom}
-                      onChange={(event) => setScopeCustom(event.target.value)}
-                      placeholder="Novo escopo"
-                      className={cn(
-                        "h-10 rounded-xl text-sm",
-                        isDark
-                          ? "border-white/10 bg-black/40 text-white"
-                          : "border-slate-200"
-                      )}
-                    />
-                  )}
-                  <select
-                    value={paymentType}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setPaymentType(next);
-                      if (next === "oneshot") {
-                        setPaymentSchedule([]);
-                        setScheduleYear("");
-                      }
-                    }}
-                    className={cn(
-                      "h-10 rounded-xl border px-3 text-sm",
-                      isDark
-                        ? "border-white/10 bg-black/40 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    <option value="">Selecionar forma de pagamento</option>
-                    {paymentTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {paymentType !== "oneshot" && (
-                    <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-white/10 p-3 text-xs text-zinc-400 md:col-span-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          value={scheduleYear}
-                          onChange={(event) => setScheduleYear(event.target.value)}
-                          className={cn(
-                            "h-9 rounded-xl border px-3 text-xs",
-                            isDark
-                              ? "border-white/10 bg-black/40 text-white"
-                              : "border-slate-200 bg-white text-slate-700"
-                          )}
-                        >
-                          <option value="">Selecionar ano</option>
-                          {scheduleYearOptions.map((year) => (
-                            <option key={year} value={year}>
-                              {year}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => {
-                            if (!scheduleYear) return;
-                            setPaymentSchedule((prev) => [
-                              ...prev,
-                              { year: scheduleYear, valueAmount: "", supplementalUsed: "" },
-                            ]);
-                            setScheduleYear("");
-                          }}
-                        >
-                          Adicionar ano
-                        </Button>
-                      </div>
-                      {paymentSchedule.length === 0 ? (
-                        <p>Adicione ao menos um ano para registrar valores.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {paymentSchedule.map((entry, index) => (
-                            <div
-                              key={`${entry.year}-${index}`}
-                              className={cn(
-                                "rounded-xl border p-3",
-                                isDark
-                                  ? "border-white/10 bg-black/40"
-                                  : "border-slate-200 bg-white"
-                              )}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                                  Ano {entry.year}
-                                </p>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    setPaymentSchedule((prev) =>
-                                      prev.filter((_, itemIndex) => itemIndex !== index)
-                                    )
-                                  }
-                                >
-                                  Remover
-                                </Button>
-                              </div>
-                              <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                <Input
-                                  value={entry.valueAmount}
-                                  onChange={(event) => {
-                                    const next = formatCurrencyInput(event.target.value);
-                                    setPaymentSchedule((prev) =>
-                                      prev.map((item, itemIndex) =>
-                                        itemIndex === index
-                                          ? { ...item, valueAmount: next }
-                                          : item
-                                      )
-                                    );
-                                  }}
-                                  placeholder="Valor adjudicado (R$)"
-                                  className={cn(
-                                    "h-9 rounded-xl text-xs",
-                                    isDark
-                                      ? "border-white/10 bg-black/40 text-white"
-                                      : "border-slate-200"
-                                  )}
-                                />
-                                <Input
-                                  value={entry.supplementalUsed}
-                                  onChange={(event) => {
-                                    const next = formatCurrencyInput(event.target.value);
-                                    setPaymentSchedule((prev) =>
-                                      prev.map((item, itemIndex) =>
-                                        itemIndex === index
-                                          ? { ...item, supplementalUsed: next }
-                                          : item
-                                      )
-                                    );
-                                  }}
-                                  placeholder="Saldo utilizado (R$)"
-                                  className={cn(
-                                    "h-9 rounded-xl text-xs",
-                                    isDark
-                                      ? "border-white/10 bg-black/40 text-white"
-                                      : "border-slate-200"
-                                  )}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {paymentType === "oneshot" && (
-                    <>
-                      <Input
-                        value={valueAmount}
-                        onChange={(event) =>
-                          setValueAmount(formatCurrencyInput(event.target.value))
-                        }
-                        placeholder="Valor adjudicado (R$)"
-                        className={cn(
-                          "h-10 rounded-xl text-sm",
-                          isDark
-                            ? "border-white/10 bg-black/40 text-white"
-                            : "border-slate-200"
-                        )}
-                      />
-                      <Input
-                        value={supplementalUsed}
-                        onChange={(event) =>
-                          setSupplementalUsed(formatCurrencyInput(event.target.value))
-                        }
-                        placeholder="Saldo utilizado (R$)"
-                        className={cn(
-                          "h-10 rounded-xl text-sm",
-                          isDark
-                            ? "border-white/10 bg-black/40 text-white"
-                            : "border-slate-200"
-                        )}
-                      />
-                    </>
-                  )}
-                  <p className="text-[11px] text-zinc-500 md:col-span-2">
-                    Disponível: {formatCurrency(supplementalAvailable, "BRL")}
-                  </p>
-                  {supplementalFieldError && (
-                    <p className="text-[11px] text-rose-400 md:col-span-2">
-                      {supplementalFieldError}
-                    </p>
-                  )}
-                  <select
-                    value={managementSelect}
-                    onChange={(event) => setManagementSelect(event.target.value)}
-                    className={cn(
-                      "h-10 rounded-xl border px-3 text-sm",
-                      isDark
-                        ? "border-white/10 bg-black/40 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    <option value="">Selecionar gerência</option>
-                    {managementOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
-                  </select>
-                  {managementSelect === CUSTOM_OPTION_VALUE && (
-                    <Input
-                      value={managementCustom}
-                      onChange={(event) => setManagementCustom(event.target.value)}
-                      placeholder="Nova gerência"
-                      className={cn(
-                        "h-10 rounded-xl text-sm",
-                        isDark
-                          ? "border-white/10 bg-black/40 text-white"
-                          : "border-slate-200"
-                      )}
-                    />
-                  )}
-                  <select
-                    value={responsibleSelect}
-                    onChange={(event) => setResponsibleSelect(event.target.value)}
-                    className={cn(
-                      "h-10 rounded-xl border px-3 text-sm",
-                      isDark
-                        ? "border-white/10 bg-black/40 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    <option value="">Selecionar responsável</option>
-                    {responsibleOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                    <option value={CUSTOM_OPTION_VALUE}>Adicionar opção...</option>
-                  </select>
-                  {responsibleSelect === CUSTOM_OPTION_VALUE && (
-                    <Input
-                      value={responsibleCustom}
-                      onChange={(event) => setResponsibleCustom(event.target.value)}
-                      placeholder="Novo responsável"
-                      className={cn(
-                        "h-10 rounded-xl text-sm",
-                        isDark
-                          ? "border-white/10 bg-black/40 text-white"
-                          : "border-slate-200"
-                      )}
-                    />
-                  )}
-                  <select
-                    value={status}
-                    onChange={(event) => setStatus(event.target.value)}
-                    className={cn(
-                      "h-10 rounded-xl border px-3 text-sm",
-                      isDark
-                        ? "border-white/10 bg-black/40 text-white"
-                        : "border-slate-200 bg-white text-slate-700"
-                    )}
-                  >
-                    {statusOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(event) => setStartDate(event.target.value)}
-                    placeholder="Início *"
-                    required
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(event) => setEndDate(event.target.value)}
-                    placeholder="Fim *"
-                    required
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <Input
-                    value={alertDays}
-                    onChange={(event) => setAlertDays(event.target.value)}
-                    placeholder="Alerta (dias)"
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                </div>
-                <div className="mt-4 space-y-3">
-                  <Textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Descrição do contrato *"
-                    required
-                    className={cn(
-                      "min-h-[90px] rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <Textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Observações adicionais"
-                    className={cn(
-                      "min-h-[70px] rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setModalOpen(false)}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      type="button"
-                      className="rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
-                      onClick={handleSave}
-                      disabled={saving}
-                    >
-                      {saving
-                        ? "Salvando..."
-                        : editingId
-                        ? "Salvar alterações"
-                        : "Cadastrar contrato"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>,
-            portalTarget
-          )
-        : null}
       {portalTarget && supplementalModalOpen
         ? createPortal(
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

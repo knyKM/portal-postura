@@ -16,6 +16,7 @@ type ContractPayload = {
   owner?: string;
   area?: string | null;
   lpu?: string | null;
+  lpuImage?: string | null;
   contractType?: string | null;
   segment?: string | null;
   sapContract?: string | null;
@@ -147,6 +148,10 @@ export async function POST(request: Request) {
     typeof payload.description === "string" ? payload.description.trim() : "";
   const area = typeof payload.area === "string" ? payload.area.trim() : "";
   const lpu = typeof payload.lpu === "string" ? payload.lpu.trim() : "";
+  const lpuImage =
+    typeof payload.lpuImage === "string" && payload.lpuImage.trim()
+      ? payload.lpuImage.trim()
+      : null;
   const contractType =
     typeof payload.contractType === "string" ? payload.contractType.trim() : "";
   const segment = typeof payload.segment === "string" ? payload.segment.trim() : "";
@@ -181,8 +186,18 @@ export async function POST(request: Request) {
     paymentType === "oneshot" ? null : JSON.stringify(paymentSchedule);
 
   if (!title || !vendor || !owner || !startDate || !endDate || !description) {
+    const missing = [
+      !title ? "Objeto do contrato" : null,
+      !vendor ? "Fornecedor" : null,
+      !owner ? "Responsável" : null,
+      !startDate ? "Início" : null,
+      !endDate ? "Fim" : null,
+      !description ? "Descrição do contrato" : null,
+    ].filter(Boolean);
     return NextResponse.json(
-      { error: "Preencha todos os campos obrigatórios do contrato." },
+      {
+        error: `Preencha os campos obrigatórios: ${missing.join(", ")}.`,
+      },
       { status: 400 }
     );
   }
@@ -240,6 +255,7 @@ export async function POST(request: Request) {
       owner,
       area: area || null,
       lpu: lpu || null,
+      lpuImage,
       contractType: contractType || null,
       segment: segment || null,
       sapContract: sapContract || null,
@@ -294,6 +310,10 @@ export async function PATCH(request: Request) {
     typeof payload.description === "string" ? payload.description.trim() : "";
   const area = typeof payload.area === "string" ? payload.area.trim() : "";
   const lpu = typeof payload.lpu === "string" ? payload.lpu.trim() : "";
+  const lpuImage =
+    typeof payload.lpuImage === "string" && payload.lpuImage.trim()
+      ? payload.lpuImage.trim()
+      : null;
   const contractType =
     typeof payload.contractType === "string" ? payload.contractType.trim() : "";
   const segment = typeof payload.segment === "string" ? payload.segment.trim() : "";
@@ -328,8 +348,18 @@ export async function PATCH(request: Request) {
     paymentType === "oneshot" ? null : JSON.stringify(paymentSchedule);
 
   if (!title || !vendor || !owner || !startDate || !endDate || !description) {
+    const missing = [
+      !title ? "Objeto do contrato" : null,
+      !vendor ? "Fornecedor" : null,
+      !owner ? "Responsável" : null,
+      !startDate ? "Início" : null,
+      !endDate ? "Fim" : null,
+      !description ? "Descrição do contrato" : null,
+    ].filter(Boolean);
     return NextResponse.json(
-      { error: "Preencha todos os campos obrigatórios do contrato." },
+      {
+        error: `Preencha os campos obrigatórios: ${missing.join(", ")}.`,
+      },
       { status: 400 }
     );
   }
@@ -374,6 +404,7 @@ export async function PATCH(request: Request) {
       owner,
       area: area || null,
       lpu: lpu || null,
+      lpuImage,
       contractType: contractType || null,
       segment: segment || null,
       sapContract: sapContract || null,
