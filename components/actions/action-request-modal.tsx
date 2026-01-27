@@ -95,6 +95,11 @@ export function ActionRequestModal({
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [idsVisibleCount, setIdsVisibleCount] = useState(6);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
+  const [chatExpanded, setChatExpanded] = useState(true);
+
+  const HISTORY_COLLAPSE_LIMIT = 2;
+  const CHAT_COLLAPSE_LIMIT = 2;
 
   const headerClass = isDark ? "text-zinc-100" : "text-slate-900";
   const subtleText = isDark ? "text-zinc-500" : "text-slate-500";
@@ -163,6 +168,8 @@ export function ActionRequestModal({
     setMessages([]);
     setCanChat(false);
     setIdsVisibleCount(6);
+    setHistoryExpanded(true);
+    setChatExpanded(true);
     void (async () => {
       try {
         const response = await fetch(`/api/actions/requests/${requestId}`);
@@ -171,8 +178,12 @@ export function ActionRequestModal({
           throw new Error(data?.error || "Não foi possível carregar o chamado.");
         }
         setRecord(data?.request ?? null);
-        setEvents(Array.isArray(data?.events) ? data.events : []);
-        setMessages(Array.isArray(data?.messages) ? data.messages : []);
+        const nextEvents = Array.isArray(data?.events) ? data.events : [];
+        const nextMessages = Array.isArray(data?.messages) ? data.messages : [];
+        setEvents(nextEvents);
+        setMessages(nextMessages);
+        setHistoryExpanded(!(nextEvents.length > HISTORY_COLLAPSE_LIMIT));
+        setChatExpanded(!(nextMessages.length > CHAT_COLLAPSE_LIMIT));
         setCanChat(Boolean(data?.canChat));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Falha ao carregar.");
@@ -188,6 +199,15 @@ export function ActionRequestModal({
       label: eventLabels[event.type] ?? event.type,
     }));
   }, [events]);
+
+  const visibleHistoryItems =
+    historyItems.length > HISTORY_COLLAPSE_LIMIT && !historyExpanded
+      ? historyItems.slice(0, HISTORY_COLLAPSE_LIMIT)
+      : historyItems;
+  const visibleMessages =
+    messages.length > CHAT_COLLAPSE_LIMIT && !chatExpanded
+      ? messages.slice(0, CHAT_COLLAPSE_LIMIT)
+      : messages;
 
   async function handleSendMessage() {
     if (!requestId) return;
@@ -221,8 +241,19 @@ export function ActionRequestModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3">
-      <div className={cn("w-full max-w-4xl rounded-3xl border p-4", panelClass)}>
-        <div className="flex items-start justify-between gap-3">
+      <div
+        className={cn(
+          "flex w-full max-w-4xl flex-col overflow-hidden rounded-3xl border",
+          panelClass
+        )}
+        style={{ maxHeight: "90vh" }}
+      >
+        <div
+          className={cn(
+            "sticky top-0 z-10 flex items-start justify-between gap-3 border-b px-4 py-4",
+            isDark ? "border-white/10 bg-[#050816]" : "border-slate-200 bg-white"
+          )}
+        >
           <div>
             <p className="text-[10px] uppercase tracking-[0.3em] text-purple-400">
               Chamado #{requestId}
@@ -239,26 +270,27 @@ export function ActionRequestModal({
           </Button>
         </div>
 
-        {isLoading ? (
-          <p className={cn("mt-4 text-sm", subtleText)}>
-            Carregando chamado...
-          </p>
-        ) : error ? (
-          <div
-            className={cn(
-              "mt-4 rounded-2xl border px-4 py-3 text-sm",
-              isDark
-                ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
-                : "border-rose-200 bg-rose-50 text-rose-700"
-            )}
-          >
-            {error}
-          </div>
-        ) : record ? (
-          <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
+          {isLoading ? (
+            <p className={cn("mt-4 text-sm", subtleText)}>
+              Carregando chamado...
+            </p>
+          ) : error ? (
+            <div
+              className={cn(
+                "mt-4 rounded-2xl border px-4 py-3 text-sm",
+                isDark
+                  ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+              )}
+            >
+              {error}
+            </div>
+          ) : record ? (
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
             <Card
               className={cn(
-                "rounded-2xl border px-3 py-2",
+                "rounded-2xl border px-3 py-1.5",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
@@ -275,7 +307,7 @@ export function ActionRequestModal({
 
             <Card
               className={cn(
-                "rounded-2xl border px-3 py-2",
+                "rounded-2xl border px-3 py-1.5",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
@@ -292,7 +324,7 @@ export function ActionRequestModal({
 
             <Card
               className={cn(
-                "rounded-2xl border px-3 py-2",
+                "rounded-2xl border px-3 py-1.5",
                 isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"
               )}
             >
@@ -512,17 +544,17 @@ export function ActionRequestModal({
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
                 Histórico do chamado
               </p>
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-1">
                 {historyItems.length === 0 ? (
                   <p className={cn("text-xs", subtleText)}>
                     Nenhum histórico disponível.
                   </p>
                 ) : (
-                  historyItems.map((event) => (
+                  visibleHistoryItems.map((event) => (
                     <div
                       key={event.id}
                       className={cn(
-                        "rounded-2xl border px-3 py-2 text-xs",
+                        "rounded-2xl border px-3 py-1.5 text-xs",
                         isDark
                           ? "border-white/10 text-zinc-300"
                           : "border-slate-200 text-slate-600"
@@ -542,6 +574,22 @@ export function ActionRequestModal({
                   ))
                 )}
               </div>
+              {historyItems.length > HISTORY_COLLAPSE_LIMIT && (
+                <div className="mt-1 flex items-center justify-end gap-2">
+                  <p className={cn("text-[10px]", subtleText)}>
+                    {historyItems.length - visibleHistoryItems.length} oculto(s)
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setHistoryExpanded((prev) => !prev)}
+                  >
+                    {historyExpanded ? "Minimizar" : "Expandir"}
+                  </Button>
+                </div>
+              )}
             </Card>
 
             <Card
@@ -551,17 +599,17 @@ export function ActionRequestModal({
               )}
             >
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Chat</p>
-              <div className="mt-2 space-y-3">
+              <div className="mt-2 space-y-2">
                 {messages.length === 0 ? (
                   <p className={cn("text-xs", subtleText)}>
                     Nenhuma mensagem registrada.
                   </p>
                 ) : (
-                  messages.map((message) => (
+                  visibleMessages.map((message) => (
                     <div
                       key={message.id}
                       className={cn(
-                        "rounded-2xl border px-3 py-2 text-xs",
+                        "rounded-2xl border px-3 py-1.5 text-xs",
                         isDark
                           ? "border-white/10 text-zinc-300"
                           : "border-slate-200 text-slate-600"
@@ -583,6 +631,22 @@ export function ActionRequestModal({
                   ))
                 )}
               </div>
+              {messages.length > CHAT_COLLAPSE_LIMIT && (
+                <div className="mt-1 flex items-center justify-end gap-2">
+                  <p className={cn("text-[10px]", subtleText)}>
+                    {messages.length - visibleMessages.length} oculto(s)
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setChatExpanded((prev) => !prev)}
+                  >
+                    {chatExpanded ? "Minimizar" : "Expandir"}
+                  </Button>
+                </div>
+              )}
 
               {canChat ? (
                 <div className="mt-3 space-y-2">
@@ -612,7 +676,8 @@ export function ActionRequestModal({
               )}
             </Card>
           </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </div>
   );
