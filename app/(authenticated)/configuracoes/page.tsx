@@ -42,6 +42,7 @@ export default function ConfiguracoesPage() {
   const [tenableVerifySsl, setTenableVerifySsl] = useState(true);
   const [tenableProxyHost, setTenableProxyHost] = useState("");
   const [tenableProxyPort, setTenableProxyPort] = useState("");
+  const [tenableScanPrefixes, setTenableScanPrefixes] = useState("");
   const [loadingTenable, setLoadingTenable] = useState(true);
   const [tenableMessage, setTenableMessage] = useState<string | null>(null);
   const [tenableError, setTenableError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export default function ConfiguracoesPage() {
   const [tenableSyncing, setTenableSyncing] = useState(false);
   const [tenableSslSaving, setTenableSslSaving] = useState(false);
   const [tenableProxySaving, setTenableProxySaving] = useState(false);
+  const [tenablePrefixesSaving, setTenablePrefixesSaving] = useState(false);
   const [jobsPaused, setJobsPaused] = useState(false);
   const [jobsMessage, setJobsMessage] = useState<string | null>(null);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -146,6 +148,15 @@ export default function ConfiguracoesPage() {
         })
         .catch(() => null);
     }
+
+    fetch("/api/integrations/tenable/scans-prefixes")
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (!data?.error) {
+          setTenableScanPrefixes(data?.prefixes ?? "");
+        }
+      })
+      .catch(() => null);
 
     fetch("/api/actions/jobs?settings=1")
       .then((res) => res.json().catch(() => null))
@@ -726,6 +737,61 @@ export default function ConfiguracoesPage() {
                 />
                 Ignorar verificação SSL (ambiente interno)
               </label>
+              <div className="grid gap-3 rounded-2xl border border-white/10 p-4">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                  Prefixos de scans
+                </p>
+                <Input
+                  value={tenableScanPrefixes}
+                  onChange={(event) => setTenableScanPrefixes(event.target.value)}
+                  placeholder="Ex.: [PRODV], [PRODH]"
+                  className="rounded-xl"
+                />
+                <p className="text-[11px] text-zinc-500">
+                  Separe por vírgula. Apenas scans cujo nome inicia com esses
+                  prefixos serão sincronizados.
+                </p>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={tenablePrefixesSaving}
+                    onClick={async () => {
+                      setTenablePrefixesSaving(true);
+                      setTenableError(null);
+                      setTenableMessage(null);
+                      try {
+                        const response = await fetch(
+                          "/api/integrations/tenable/scans-prefixes",
+                          {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ prefixes: tenableScanPrefixes }),
+                          }
+                        );
+                        const data = await response.json().catch(() => null);
+                        if (!response.ok) {
+                          throw new Error(
+                            data?.error || "Não foi possível salvar os prefixos."
+                          );
+                        }
+                        setTenableScanPrefixes(data?.prefixes ?? tenableScanPrefixes);
+                        setTenableMessage("Prefixos salvos com sucesso.");
+                      } catch (err) {
+                        setTenableError(
+                          err instanceof Error
+                            ? err.message
+                            : "Não foi possível salvar os prefixos."
+                        );
+                      } finally {
+                        setTenablePrefixesSaving(false);
+                      }
+                    }}
+                  >
+                    Salvar prefixos
+                  </Button>
+                </div>
+              </div>
               {user?.role === "admin" && (
                 <div className="grid gap-3 rounded-2xl border border-white/10 p-4">
                   <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">

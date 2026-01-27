@@ -466,6 +466,7 @@ db.exec(`
     source TEXT DEFAULT 'manual',
     external_id TEXT,
     last_synced_at TEXT,
+    plugin_modification_date TEXT,
     plugin_publication_date TEXT,
     patch_publication_date TEXT,
     intel_type TEXT,
@@ -509,6 +510,9 @@ const hasVulnExternalIdColumn = vulnerabilityTableInfo.some(
 );
 const hasVulnLastSyncedAtColumn = vulnerabilityTableInfo.some(
   (column) => column.name === "last_synced_at"
+);
+const hasVulnPluginModificationDate = vulnerabilityTableInfo.some(
+  (column) => column.name === "plugin_modification_date"
 );
 const hasVulnPluginPublicationDate = vulnerabilityTableInfo.some(
   (column) => column.name === "plugin_publication_date"
@@ -554,6 +558,9 @@ if (!hasVulnExternalIdColumn) {
 }
 if (!hasVulnLastSyncedAtColumn) {
   db.exec("ALTER TABLE vulnerabilities ADD COLUMN last_synced_at TEXT");
+}
+if (!hasVulnPluginModificationDate) {
+  db.exec("ALTER TABLE vulnerabilities ADD COLUMN plugin_modification_date TEXT");
 }
 if (!hasVulnPluginPublicationDate) {
   db.exec("ALTER TABLE vulnerabilities ADD COLUMN plugin_publication_date TEXT");

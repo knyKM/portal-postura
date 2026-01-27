@@ -107,13 +107,17 @@ function mapLogRow(row: AutomationLogRow): AutomationLog {
   };
 }
 
-export async function listAutomationSnapshot(limitLogs = 20) {
+export async function listAutomationSnapshot(limitLogs = 500) {
   const jobRows = db
     .prepare<AutomationJobRow>("SELECT * FROM automation_jobs ORDER BY created_at DESC")
     .all();
   const logRows = db
     .prepare<AutomationLogRow>(
-      "SELECT job_id, message, level, created_at FROM automation_job_logs ORDER BY id DESC LIMIT ?"
+      `SELECT job_id, message, level, created_at
+       FROM automation_job_logs
+       WHERE datetime(replace(created_at, 'T', ' ')) >= datetime('now','localtime','-3 days')
+       ORDER BY id DESC
+       LIMIT ?`
     )
     .all(limitLogs);
 
@@ -122,6 +126,20 @@ export async function listAutomationSnapshot(limitLogs = 20) {
     logs: logRows.map(mapLogRow),
     generatedAt: getLocalTimestamp(),
   };
+}
+
+export async function listAutomationLogsForJob(jobId: string, limitLogs = 2000) {
+  const logRows = db
+    .prepare<AutomationLogRow>(
+      `SELECT job_id, message, level, created_at
+       FROM automation_job_logs
+       WHERE job_id = ?
+         AND datetime(replace(created_at, 'T', ' ')) >= datetime('now','localtime','-3 days')
+       ORDER BY id DESC
+       LIMIT ?`
+    )
+    .all(jobId, limitLogs);
+  return logRows.map(mapLogRow);
 }
 
 export async function getAutomationJobById(id: string) {

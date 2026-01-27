@@ -1,8 +1,30 @@
 import { NextResponse } from "next/server";
-import { listAutomationSnapshot } from "@/lib/auditoria/automation-service";
+import {
+  getAutomationJobById,
+  listAutomationLogsForJob,
+  listAutomationSnapshot,
+} from "@/lib/auditoria/automation-service";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const jobId = url.searchParams.get("jobId");
+    if (jobId) {
+      const job = await getAutomationJobById(jobId);
+      const logs = await listAutomationLogsForJob(jobId);
+      return NextResponse.json(
+        {
+          job,
+          logs,
+          generatedAt: new Date().toISOString(),
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
     const snapshot = await listAutomationSnapshot();
     return NextResponse.json(snapshot, {
       headers: {

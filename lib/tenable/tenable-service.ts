@@ -182,6 +182,19 @@ function normalizeNumericValue(value: unknown) {
   return null;
 }
 
+export function getExistingPluginModificationDates(ids: string[]) {
+  if (!Array.isArray(ids) || ids.length === 0) return {};
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = db
+    .prepare<{ id: string; plugin_modification_date: string | null }>(
+      `SELECT id, plugin_modification_date FROM vulnerabilities WHERE id IN (${placeholders})`
+    )
+    .all(...ids);
+  return Object.fromEntries(
+    rows.map((row) => [row.id, row.plugin_modification_date])
+  );
+}
+
 function normalizeSeverity(detail: Record<string, unknown>, attrMap?: Map<string, string[]>) {
   const riskFromAttr = attrMap ? getAttrValue(attrMap, "risk_factor") : "";
   const risk = riskFromAttr || (detail?.risk_factor as string | undefined) || "";
@@ -220,6 +233,10 @@ export function upsertTenablePlugin(pluginId: number, detail: Record<string, unk
     getAttrValue(attrMap, "plugin_publication_date") ||
     (detail?.plugin_publication_date as string | undefined) ||
     "";
+  const pluginModificationDate =
+    getAttrValue(attrMap, "plugin_modification_date") ||
+    (detail?.plugin_modification_date as string | undefined) ||
+    "";
   const patchPublicationDate =
     getAttrValue(attrMap, "patch_publication_date") ||
     (detail?.patch_publication_date as string | undefined) ||
@@ -243,10 +260,10 @@ export function upsertTenablePlugin(pluginId: number, detail: Record<string, unk
   const stmt = db.prepare(
     `INSERT INTO vulnerabilities
       (id, title, severity, description, remediation, score, source, external_id, last_synced_at,
-       plugin_publication_date, patch_publication_date, intel_type, plugin_type,
+       plugin_modification_date, plugin_publication_date, patch_publication_date, intel_type, plugin_type,
        cve, cpe, vpr_score, vpr_updated, cvss4_base_score, cvss4_temporal_score,
        cvss3_base_score, cvss3_temporal_score, cvss_temporal_score, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'tenable', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, 'tenable', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        severity = excluded.severity,
@@ -256,6 +273,7 @@ export function upsertTenablePlugin(pluginId: number, detail: Record<string, unk
        source = 'tenable',
        external_id = excluded.external_id,
        last_synced_at = excluded.last_synced_at,
+       plugin_modification_date = excluded.plugin_modification_date,
        plugin_publication_date = excluded.plugin_publication_date,
        patch_publication_date = excluded.patch_publication_date,
        intel_type = excluded.intel_type,
@@ -280,6 +298,7 @@ export function upsertTenablePlugin(pluginId: number, detail: Record<string, unk
     Number.isFinite(score) ? score : 0,
     String(pluginId),
     now,
+    pluginModificationDate || null,
     pluginPublicationDate || null,
     patchPublicationDate || null,
     intelType || null,
@@ -315,16 +334,90 @@ export async function fetchScanDetail(
   scanId: number,
   credentials: TenableCredentials
 ) {
-  const response = await tenableFetch(`/scans/${scanId}`, credentials);
+  const path = `/scans/${scanId}`;
+  const response = await tenableFetch(path, credentials);
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(
       (data?.error as string | undefined) ||
         (data?.message as string | undefined) ||
-        `Falha ao buscar scan ${scanId} (${response.status}).`
+        `Falha ao buscar scan ${scanId} (${response.status}). Endpoint: ${path}`
     );
   }
   return data;
+}
+
+export async function fetchScanHistory(
+  scanId: number,
+  credentials: TenableCredentials
+) {
+  const path = `/scans/${scanId}/history`;
+  const response = await tenableFetch(path, credentials);
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      (data?.error as string | undefined) ||
+        (data?.message as string | undefined) ||
+        `Falha ao buscar histórico do scan ${scanId} (${response.status}). Endpoint: ${path}`
+    );
+  }
+  return Array.isArray(data?.history) ? data.history : [];
+}
+
+export async function fetchScanDetailWithHistory(
+  scanId: number,
+  historyId: number,
+  credentials: TenableCredentials
+) {
+  const path = `/scans/${scanId}?history_id=${historyId}`;
+  const response = await tenableFetch(path, credentials);
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      (data?.error as string | undefined) ||
+        (data?.message as string | undefined) ||
+        `Falha ao buscar detalhes do scan ${scanId} (${response.status}). Endpoint: ${path}`
+    );
+  }
+  return data;
+}
+
+export async function fetchScanHostDetail(
+  scanId: number,
+  hostId: number,
+  historyId: number,
+  credentials: TenableCredentials
+) {
+  const path = `/scans/${scanId}/hosts/${hostId}?history_id=${historyId}`;
+  const response = await tenableFetch(path, credentials);
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      (data?.error as string | undefined) ||
+        (data?.message as string | undefined) ||
+        `Falha ao buscar host ${hostId} do scan ${scanId} (${response.status}). Endpoint: ${path}`
+    );
+  }
+  return data;
+}
+
+export async function fetchScanHostPlugins(
+  scanId: number,
+  hostId: number,
+  historyId: number,
+  credentials: TenableCredentials
+) {
+  const path = `/scans/${scanId}/hosts/${hostId}/plugins?history_id=${historyId}`;
+  const response = await tenableFetch(path, credentials);
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      (data?.error as string | undefined) ||
+        (data?.message as string | undefined) ||
+        `Falha ao buscar plugins do host ${hostId} (${response.status}). Endpoint: ${path}`
+    );
+  }
+  return Array.isArray(data?.plugins) ? data.plugins : [];
 }
 
 export function upsertTenableScan(

@@ -332,14 +332,14 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
     if (!tenableJobId) return;
     setTenableLogLoading(true);
     try {
-      const response = await fetch("/api/auditoria", { cache: "no-store" });
+      const response = await fetch(`/api/auditoria?jobId=${tenableJobId}`, {
+        cache: "no-store",
+      });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(data?.error || "Falha ao carregar logs.");
       }
-      const job =
-        Array.isArray(data?.jobs) &&
-        data.jobs.find((item: { id?: string }) => item?.id === tenableJobId);
+      const job = data?.job ?? null;
       setTenableJobSnapshot(
         job
           ? {
@@ -352,21 +352,19 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
       );
       const logs =
         Array.isArray(data?.logs) && data.logs.length > 0
-          ? data.logs
-              .filter((log: { jobId?: string }) => log?.jobId === tenableJobId)
-              .map(
-                (log: {
-                  timestamp?: string;
-                  message?: string;
-                  level?: string;
-                  createdAt?: string;
-                }) => ({
-                  createdAt: log.createdAt,
-                  timestamp: log.timestamp ?? "",
-                  message: log.message ?? "",
-                  level: log.level as "info" | "warning" | "error" | undefined,
-                })
-              )
+          ? data.logs.map(
+              (log: {
+                timestamp?: string;
+                message?: string;
+                level?: string;
+                createdAt?: string;
+              }) => ({
+                createdAt: log.createdAt,
+                timestamp: log.timestamp ?? "",
+                message: log.message ?? "",
+                level: log.level as "info" | "warning" | "error" | undefined,
+              })
+            )
           : [];
       setTenableLogs(logs);
       setTenableLogPage(1);
@@ -410,13 +408,18 @@ export default function PlaybookDetailClient({ playbookId }: Props) {
   }, [tenableLogs]);
 
   const tenableLogsPerPage = 5;
+  const tenableLogsMaxPages = 100;
+  const tenableLogsCapped = tenableLogsRecent.slice(
+    0,
+    tenableLogsPerPage * tenableLogsMaxPages
+  );
   const tenableLogsTotalPages = Math.max(
     1,
-    Math.ceil(tenableLogsRecent.length / tenableLogsPerPage)
+    Math.ceil(tenableLogsCapped.length / tenableLogsPerPage)
   );
   const tenableLogsPage = Math.min(tenableLogPage, tenableLogsTotalPages);
   const tenableLogsStart = (tenableLogsPage - 1) * tenableLogsPerPage;
-  const tenableLogsPageItems = tenableLogsRecent.slice(
+  const tenableLogsPageItems = tenableLogsCapped.slice(
     tenableLogsStart,
     tenableLogsStart + tenableLogsPerPage
   );
@@ -773,7 +776,7 @@ function moveStep(index: number, direction: -1 | 1) {
                     variant="outline"
                     className="rounded-2xl border-white/30 text-white hover:bg-white/10"
                     onClick={handleTenableSync}
-                    disabled={!isAdmin || tenableSyncing || tenablePaused || tenableIsRunning}
+                    disabled={!isAdmin || tenableSyncing || tenableIsRunning}
                   >
                     <PlayCircle className="mr-2 h-4 w-4" />
                     {tenableSyncing ? "Executando..." : "Executar agora"}
@@ -784,7 +787,7 @@ function moveStep(index: number, direction: -1 | 1) {
                       variant="outline"
                       className="rounded-2xl border-white/30 text-white hover:bg-white/10"
                       onClick={() => setTenableFullResyncOpen(true)}
-                      disabled={!isAdmin || tenableSyncing || tenablePaused}
+                      disabled={!isAdmin}
                     >
                       Full resync
                     </Button>
@@ -794,10 +797,21 @@ function moveStep(index: number, direction: -1 | 1) {
                     variant="outline"
                     className="rounded-2xl border-white/30 text-white hover:bg-white/10"
                     onClick={() => handleTenablePauseToggle(!tenablePaused)}
-                    disabled={!isAdmin || tenablePauseLoading}
+                    disabled={!isAdmin || tenablePauseLoading || !tenableIsRunning}
                   >
                     {tenablePaused ? "Retomar sincronização" : "Pausar sincronização"}
                   </Button>
+                  {tenableTarget === "scans" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-2xl border-white/30 text-white hover:bg-white/10"
+                      onClick={() => handleTenablePauseToggle(true)}
+                      disabled={!isAdmin || tenablePauseLoading || !tenableIsRunning}
+                    >
+                      Parar sync scans
+                    </Button>
+                  )}
                   <div className="flex items-center gap-2 text-xs text-zinc-400">
                     <Zap className="h-4 w-4 text-purple-300" />
                     Registro automático no monitor de jobs.

@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { getUserTenableSettings } from "@/lib/auth/user-service";
 import {
   fetchPluginDetail,
+  getExistingPluginModificationDates,
   fetchPlugins,
   upsertTenablePlugin,
 } from "@/lib/tenable/tenable-service";
@@ -90,10 +91,14 @@ export async function POST(request: Request) {
       : getIntegrationSetting("tenable_plugins_last_updated") ??
         getIntegrationSetting("tenable_plugins_last_sync");
     const lastUpdatedParam = normalizeLastUpdated(lastUpdatedSetting);
-    let plugins = await fetchPluginsWithHeartbeat(
+    const shouldAbort = () =>
+      getIntegrationSetting("tenable_plugins_run_id") !== runId ||
+      getIntegrationSetting("tenable_plugins_paused") === "true";
+    let plugins = await fetchPluginsWithRetry(
       job.id,
       credentials,
-      lastUpdatedParam ?? undefined
+      lastUpdatedParam ?? undefined,
+      shouldAbort
     );
     if (plugins.length === 0 && lastUpdatedParam) {
       await updateAutomationJobStatus(job.id, {
@@ -102,9 +107,17 @@ export async function POST(request: Request) {
           "Nenhum plugin retornado com last_updated. Reexecutando sync completo.",
         logLevel: "warning",
       });
-      plugins = await fetchPluginsWithHeartbeat(job.id, credentials);
+      plugins = await fetchPluginsWithRetry(job.id, credentials, undefined, shouldAbort);
     }
     const total = plugins.length;
+    let maxModificationDate: Date | null = null;
+    plugins.forEach((plugin) => {
+      const raw = extractPluginModificationDate(plugin);
+      const parsed = toDate(raw);
+      if (parsed && (!maxModificationDate || parsed > maxModificationDate)) {
+        maxModificationDate = parsed;
+      }
+    });
     const checkpointRaw = getIntegrationSetting("tenable_plugins_checkpoint_id");
     const checkpointId = checkpointRaw ? Number(checkpointRaw) : null;
     let startIndex = 0;
@@ -138,10 +151,12 @@ export async function POST(request: Request) {
     let skipped = 0;
     let lastCheckpointId: number | null =
       checkpointId && Number.isFinite(checkpointId) ? checkpointId : null;
-    const logEvery = 50;
+    const logEvery = 100;
     const heartbeatEveryMs = 15000;
     let lastHeartbeat = Date.now();
-    for (let index = startIndex; index < plugins.length; index += 1) {
+    const batchSize = 200;
+    const concurrency = 8;
+    for (let index = startIndex; index < plugins.length; index += batchSize) {
       if (getIntegrationSetting("tenable_plugins_run_id") !== runId) {
         const remaining = Math.max(0, total - index);
         await updateAutomationJobStatus(job.id, {
@@ -155,19 +170,8 @@ export async function POST(request: Request) {
           { status: 409 }
         );
       }
-      const plugin = plugins[index];
-      const riskFactor =
-        (plugin.attributes as Record<string, unknown> | undefined)?.risk_factor ??
-        (plugin as { risk_factor?: unknown }).risk_factor;
-      if (
-        typeof riskFactor === "string" &&
-        riskFactor.trim().toLowerCase() === "none"
-      ) {
-        skipped += 1;
-        continue;
-      }
       if (getIntegrationSetting("tenable_plugins_paused") === "true") {
-        const remaining = Math.max(0, total - (index));
+        const remaining = Math.max(0, total - index);
         await updateAutomationJobStatus(job.id, {
           statusCode: 0,
           pendingIssues: remaining,
@@ -185,32 +189,65 @@ export async function POST(request: Request) {
           { status: 409 }
         );
       }
-      const detail = await fetchPluginDetail(plugin.id, credentials);
-      const mergedDetail = {
-        ...detail,
-        listAttributes: plugin.attributes,
-        cve: Array.isArray((plugin as { cve?: unknown }).cve)
-          ? (plugin as { cve?: unknown }).cve
-          : (plugin.attributes as Record<string, unknown> | undefined)?.cve,
-        cpe: Array.isArray((plugin as { cpe?: unknown }).cpe)
-          ? (plugin as { cpe?: unknown }).cpe
-          : (plugin.attributes as Record<string, unknown> | undefined)?.cpe,
-        vpr:
-          (plugin as { vpr?: unknown }).vpr ??
-          (plugin.attributes as Record<string, unknown> | undefined)?.vpr,
-      };
-      const saved = upsertTenablePlugin(plugin.id, mergedDetail);
-      if (saved) {
-        processed += 1;
-      } else {
-        skipped += 1;
+      const batch = plugins.slice(index, index + batchSize);
+      const batchIds = batch.map((plugin) => String(plugin.id));
+      const existingMods = getExistingPluginModificationDates(batchIds);
+
+      for (let chunkStart = 0; chunkStart < batch.length; chunkStart += concurrency) {
+        const chunk = batch.slice(chunkStart, chunkStart + concurrency);
+        const results = await Promise.all(
+          chunk.map(async (plugin) => {
+            const riskFactor =
+              (plugin.attributes as Record<string, unknown> | undefined)?.risk_factor ??
+              (plugin as { risk_factor?: unknown }).risk_factor;
+            if (
+              typeof riskFactor === "string" &&
+              riskFactor.trim().toLowerCase() === "none"
+            ) {
+              return { processed: 0, skipped: 1 };
+            }
+            const listMod = extractPluginModificationDate(plugin);
+            const existingMod = existingMods[String(plugin.id)] ?? null;
+            if (listMod && existingMod && listMod === existingMod) {
+              return { processed: 0, skipped: 1 };
+            }
+            const detail = await fetchPluginDetailWithRetry(
+              job.id,
+              plugin.id,
+              credentials,
+              shouldAbort
+            );
+            const mergedDetail = {
+              ...detail,
+              listAttributes: plugin.attributes,
+              cve: Array.isArray((plugin as { cve?: unknown }).cve)
+                ? (plugin as { cve?: unknown }).cve
+                : (plugin.attributes as Record<string, unknown> | undefined)?.cve,
+              cpe: Array.isArray((plugin as { cpe?: unknown }).cpe)
+                ? (plugin as { cpe?: unknown }).cpe
+                : (plugin.attributes as Record<string, unknown> | undefined)?.cpe,
+              vpr:
+                (plugin as { vpr?: unknown }).vpr ??
+                (plugin.attributes as Record<string, unknown> | undefined)?.vpr,
+              plugin_modification_date: listMod ?? undefined,
+            };
+            const saved = upsertTenablePlugin(plugin.id, mergedDetail);
+            return { processed: saved ? 1 : 0, skipped: saved ? 0 : 1 };
+          })
+        );
+        results.forEach((result) => {
+          processed += result.processed;
+          skipped += result.skipped;
+        });
       }
-      const handled = processed + skipped + startIndex;
-      const checkpointIdValue = Number(plugin.id);
+
+      const handled = Math.min(total, index + batch.length);
+      const checkpointIdValue = Number(batch[batch.length - 1]?.id);
       if (Number.isFinite(checkpointIdValue)) {
         lastCheckpointId = checkpointIdValue;
         setIntegrationSetting("tenable_plugins_checkpoint_id", String(checkpointIdValue));
       }
+
       if (handled === total || handled % logEvery === 0) {
         const remaining = Math.max(0, total - handled);
         await updateAutomationJobStatus(job.id, {
@@ -234,7 +271,10 @@ export async function POST(request: Request) {
     }
     setIntegrationSetting("tenable_plugins_last_sync", getLocalTimestamp());
     if (plugins.length > 0) {
-      setIntegrationSetting("tenable_plugins_last_updated", getLocalDateStamp());
+      const nextDate = maxModificationDate
+        ? formatDateOnly(maxModificationDate)
+        : getLocalDateStamp();
+      setIntegrationSetting("tenable_plugins_last_updated", nextDate);
     }
     setIntegrationSetting("tenable_plugins_checkpoint_id", "");
     setIntegrationSetting("tenable_plugins_run_id", "");
@@ -288,6 +328,77 @@ async function fetchPluginsWithHeartbeat(
   }
 }
 
+function isRetryableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("500") ||
+    message.includes("502") ||
+    message.includes("503") ||
+    message.includes("504") ||
+    message.toLowerCase().includes("fetch failed")
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchPluginsWithRetry(
+  jobId: string,
+  credentials: { accessKey: string; secretKey: string },
+  lastUpdated: string | undefined,
+  shouldAbort: () => boolean
+) {
+  let attempt = 0;
+  while (true) {
+    if (shouldAbort()) {
+      throw new Error("Sincronização interrompida.");
+    }
+    try {
+      return await fetchPluginsWithHeartbeat(jobId, credentials, lastUpdated);
+    } catch (error) {
+      if (!isRetryableError(error)) {
+        throw error;
+      }
+      attempt += 1;
+      await updateAutomationJobStatus(jobId, {
+        statusCode: 2,
+        logMessage: `Erro temporário ao listar plugins (tentativa ${attempt}). Repetindo em 30s...`,
+        logLevel: "warning",
+      });
+      await sleep(30000);
+    }
+  }
+}
+
+async function fetchPluginDetailWithRetry(
+  jobId: string,
+  pluginId: number,
+  credentials: { accessKey: string; secretKey: string },
+  shouldAbort: () => boolean
+) {
+  let attempt = 0;
+  while (true) {
+    if (shouldAbort()) {
+      throw new Error("Sincronização interrompida.");
+    }
+    try {
+      return await fetchPluginDetail(pluginId, credentials);
+    } catch (error) {
+      if (!isRetryableError(error)) {
+        throw error;
+      }
+      attempt += 1;
+      await updateAutomationJobStatus(jobId, {
+        statusCode: 2,
+        logMessage: `Plugin ${pluginId}: erro temporário (tentativa ${attempt}). Repetindo em 20s...`,
+        logLevel: "warning",
+      });
+      await sleep(20000);
+    }
+  }
+}
+
 function normalizeLastUpdated(value: string | null) {
   if (!value) return null;
   const trimmed = value.trim();
@@ -306,4 +417,21 @@ function formatDateOnly(date: Date) {
 
 function getLocalDateStamp() {
   return formatDateOnly(new Date());
+}
+
+function extractPluginModificationDate(plugin: Record<string, unknown>) {
+  const attr =
+    (plugin.attributes as Record<string, unknown> | undefined)
+      ?.plugin_modification_date ?? (plugin as { plugin_modification_date?: unknown }).plugin_modification_date;
+  if (typeof attr === "string" && attr.trim()) {
+    return attr.trim();
+  }
+  return null;
+}
+
+function toDate(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  return null;
 }
