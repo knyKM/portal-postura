@@ -1,5 +1,6 @@
 import { Agent } from "undici";
-import fs from "node:fs/promises";
+import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import jiraFieldsJson from "@/data/jira-fields.json";
 import { getLocalTimestamp } from "@/lib/utils/time";
@@ -86,57 +87,44 @@ function extractErrorMessage(raw: string, data: Record<string, unknown> | null) 
   );
 }
 
-async function fetchIssuesByJql(
+async function fetchIssuesByJqlPage(
   config: JiraConfig,
   jql: string,
-  fields: string[]
+  fields: string[],
+  startAt: number,
+  maxResults: number
 ) {
-  const issues: Array<{ key: string; fields: Record<string, unknown> }> = [];
-  let startAt = 0;
-  const maxResults = 100;
-  let total: number | null = null;
-
-  while (total === null || issues.length < total) {
-    const response = await jiraFetch(config, "/rest/api/2/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jql,
-        startAt,
-        maxResults,
-        fields: fields.length ? fields : ["summary"],
-      }),
-    });
-    const raw = await response.text();
-    let data: Record<string, unknown> | null = null;
-    if (raw) {
-      try {
-        data = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        data = null;
-      }
-    }
-    if (!response.ok) {
-      throw new JiraApiError(extractErrorMessage(raw, data), response.status);
-    }
-    const fetched = Array.isArray((data as { issues?: unknown })?.issues)
-      ? (data as { issues: Array<{ key?: string; fields?: Record<string, unknown> }> })
-          .issues
-      : [];
-    fetched.forEach((issue) => {
-      if (!issue.key) return;
-      issues.push({
-        key: issue.key,
-        fields: issue.fields ?? {},
-      });
-    });
-    total = typeof data?.total === "number" ? data.total : issues.length;
-    startAt += maxResults;
-    if (issues.length >= total || fetched.length === 0) {
-      break;
+  const response = await jiraFetch(config, "/rest/api/2/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jql,
+      startAt,
+      maxResults,
+      fields: fields.length ? fields : ["summary"],
+    }),
+  });
+  const raw = await response.text();
+  let data: Record<string, unknown> | null = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      data = null;
     }
   }
-  return { issues, total: total ?? issues.length };
+  if (!response.ok) {
+    throw new JiraApiError(extractErrorMessage(raw, data), response.status);
+  }
+  const fetched = Array.isArray((data as { issues?: unknown })?.issues)
+    ? (data as { issues: Array<{ key?: string; fields?: Record<string, unknown> }> })
+        .issues
+    : [];
+  const issues = fetched
+    .filter((issue) => Boolean(issue?.key))
+    .map((issue) => ({ key: issue.key as string, fields: issue.fields ?? {} }));
+  const total = typeof data?.total === "number" ? data.total : issues.length;
+  return { issues, total };
 }
 
 function formatFieldValue(value: unknown, forceNumber = false): string | number {
@@ -216,6 +204,10 @@ function toCsv(rows: Array<Array<string | number>>, delimiter = ";") {
     .join("\r\n");
 }
 
+function toCsvRow(row: Array<string | number>, delimiter = ";") {
+  return row.map((value) => formatCsvValue(value, delimiter)).join(delimiter);
+}
+
 function buildDownloadUrl(jobId: number) {
   const baseUrl = process.env.APP_BASE_URL?.replace(/\/+$/, "");
   if (!baseUrl) return `/api/jira-export/jobs/${jobId}/download`;
@@ -288,8 +280,6 @@ export async function runJiraExportJob(jobId: number) {
     if (hasLinkedIssues && !fieldsForJira.includes("issuelinks")) {
       fieldsForJira.push("issuelinks");
     }
-    const { issues, total } = await fetchIssuesByJql(config, job.jql, fieldsForJira);
-    if (isCanceled()) return;
     const fieldCatalog = jiraFieldsJson as JiraField[];
     const labelById = new Map(
       fieldCatalog.map((field) => [field.id, field.name])
@@ -310,57 +300,78 @@ export async function runJiraExportJob(jobId: number) {
         return label.toLowerCase().startsWith("total");
       })
     );
-    const rows: string[][] = [headers];
-    updateJiraExportJobProgress({
-      id: jobId,
-      totalIssues: total ?? issues.length,
-      processedIssues: 0,
-    });
-
-    for (let index = 0; index < issues.length; index += 1) {
-      if (isCanceled()) return;
-      const issue = issues[index];
-      const row = fields.map((field) => {
-        if (field === "key") return issue.key;
-        if (field.startsWith("issuelinks.")) {
-          return formatLinkedIssues(issue.fields?.issuelinks, field);
-        }
-        const rawValue = issue.fields?.[field];
-        if (numericFields.has(field)) {
-          if (typeof rawValue === "number") return rawValue;
-          if (typeof rawValue === "string") {
-            const normalized = rawValue.replace(/\./g, "").replace(",", ".");
-            const parsed = Number(normalized);
-            return Number.isFinite(parsed) ? parsed : formatFieldValue(rawValue);
-          }
-        }
-        return formatFieldValue(rawValue);
-      });
-      rows.push(row);
-      if (index % 25 === 0) {
-        updateJiraExportJobProgress({
-          id: jobId,
-          processedIssues: index + 1,
-        });
-      }
-    }
-    updateJiraExportJobProgress({
-      id: jobId,
-      processedIssues: issues.length,
-    });
-
-    if (isCanceled()) return;
-    const csvContent = toCsv(rows, ";");
-    const buffer = Buffer.from(`\uFEFF${csvContent}`, "utf8");
-
     const exportDir = path.join(process.cwd(), "tmp", "exports");
-    await fs.mkdir(exportDir, { recursive: true });
+    await fsPromises.mkdir(exportDir, { recursive: true });
     const slug = job.job_name ? slugifyFileName(job.job_name) : "";
     const fileName = slug
       ? `jira-export-${jobId}-${slug}.csv`
       : `jira-export-${jobId}.csv`;
     const filePath = path.join(exportDir, fileName);
-    await fs.writeFile(filePath, buffer);
+    const stream = fs.createWriteStream(filePath, { encoding: "utf8" });
+    stream.write("\uFEFF");
+    stream.write(`${toCsvRow(headers, ";")}\r\n`);
+
+    let startAt = 0;
+    const maxResults = 100;
+    let totalIssues: number | null = null;
+    let processed = 0;
+    while (true) {
+      if (isCanceled()) return;
+      const { issues, total } = await fetchIssuesByJqlPage(
+        config,
+        job.jql,
+        fieldsForJira,
+        startAt,
+        maxResults
+      );
+      if (totalIssues === null) {
+        totalIssues = total ?? issues.length;
+        updateJiraExportJobProgress({
+          id: jobId,
+          totalIssues,
+          processedIssues: 0,
+        });
+      }
+      for (const issue of issues) {
+        if (isCanceled()) return;
+        const row = fields.map((field) => {
+          if (field === "key") return issue.key;
+          if (field.startsWith("issuelinks.")) {
+            return formatLinkedIssues(issue.fields?.issuelinks, field);
+          }
+          const rawValue = issue.fields?.[field];
+          if (numericFields.has(field)) {
+            if (typeof rawValue === "number") return rawValue;
+            if (typeof rawValue === "string") {
+              const normalized = rawValue.replace(/\./g, "").replace(",", ".");
+              const parsed = Number(normalized);
+              return Number.isFinite(parsed) ? parsed : formatFieldValue(rawValue);
+            }
+          }
+          return formatFieldValue(rawValue);
+        });
+        stream.write(`${toCsvRow(row, ";")}\r\n`);
+        processed += 1;
+        if (processed % 50 === 0) {
+          updateJiraExportJobProgress({
+            id: jobId,
+            processedIssues: processed,
+          });
+        }
+      }
+      if (issues.length < maxResults) {
+        break;
+      }
+      startAt += maxResults;
+    }
+    updateJiraExportJobProgress({
+      id: jobId,
+      processedIssues: processed,
+    });
+    await new Promise<void>((resolve, reject) => {
+      stream.end(() => resolve());
+      stream.on("error", reject);
+    });
     const expiresAt = getLocalTimestamp(new Date(Date.now() + 4 * 24 * 60 * 60 * 1000));
 
     updateJiraExportJobStatus({
