@@ -22,6 +22,12 @@ type ContractPayload = {
   contractYear?: string | null;
   contractScope?: string | null;
   management?: string | null;
+  paymentType?: string | null;
+  paymentSchedule?: Array<{
+    year?: string | null;
+    valueAmount?: string | number | null;
+    supplementalUsed?: string | number | null;
+  }> | null;
   supplementalUsed?: number | null;
   status?: string;
   startDate?: string;
@@ -34,10 +40,16 @@ type ContractPayload = {
 };
 
 const STATUS_OPTIONS = new Set(["ativo", "em_negociacao", "suspenso", "encerrado"]);
+const PAYMENT_TYPE_OPTIONS = new Set(["oneshot", "oneshot_anual", "mensal"]);
 
 function sanitizeStatus(value?: string) {
   if (value && STATUS_OPTIONS.has(value)) return value;
   return "ativo";
+}
+
+function sanitizePaymentType(value?: string | null) {
+  if (value && PAYMENT_TYPE_OPTIONS.has(value)) return value;
+  return "oneshot";
 }
 
 function parseLocaleNumber(value?: string | number | null) {
@@ -55,6 +67,46 @@ function parseLocaleNumber(value?: string | number | null) {
   }
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizePaymentSchedule(
+  schedule?: ContractPayload["paymentSchedule"] | null
+) {
+  if (!Array.isArray(schedule)) return [];
+  return schedule
+    .map((entry) => {
+      const year = typeof entry?.year === "string" ? entry.year.trim() : "";
+      if (!year) return null;
+      const valueAmount = parseLocaleNumber(entry.valueAmount ?? null);
+      const supplementalUsed = parseLocaleNumber(entry.supplementalUsed ?? null);
+      return {
+        year,
+        valueAmount: Number.isFinite(valueAmount ?? NaN) ? valueAmount : null,
+        supplementalUsed: Number.isFinite(supplementalUsed ?? NaN) ? supplementalUsed : null,
+      };
+    })
+    .filter(Boolean) as Array<{
+    year: string;
+    valueAmount: number | null;
+    supplementalUsed: number | null;
+  }>;
+}
+
+function sumScheduleValues(
+  schedule: Array<{ valueAmount: number | null; supplementalUsed: number | null }>
+) {
+  return schedule.reduce(
+    (acc, entry) => {
+      if (typeof entry.valueAmount === "number") {
+        acc.valueAmount += entry.valueAmount;
+      }
+      if (typeof entry.supplementalUsed === "number") {
+        acc.supplementalUsed += entry.supplementalUsed;
+      }
+      return acc;
+    },
+    { valueAmount: 0, supplementalUsed: 0 }
+  );
 }
 
 export async function GET(request: Request) {
@@ -106,6 +158,8 @@ export async function POST(request: Request) {
     typeof payload.contractScope === "string" ? payload.contractScope.trim() : "";
   const management =
     typeof payload.management === "string" ? payload.management.trim() : "";
+  const paymentType = sanitizePaymentType(payload.paymentType);
+  const paymentSchedule = normalizePaymentSchedule(payload.paymentSchedule);
   const supplementalUsedRaw = parseLocaleNumber(payload.supplementalUsed ?? null);
   const supplementalUsed =
     typeof supplementalUsedRaw === "number" ? Math.max(0, supplementalUsedRaw) : null;
@@ -118,6 +172,13 @@ export async function POST(request: Request) {
   const valueCurrency =
     typeof payload.valueCurrency === "string" ? payload.valueCurrency.trim() : "";
   const notes = typeof payload.notes === "string" ? payload.notes.trim() : "";
+  const scheduleTotals = sumScheduleValues(paymentSchedule);
+  const effectiveValueAmount =
+    paymentType === "oneshot" ? valueAmount : scheduleTotals.valueAmount;
+  const effectiveSupplementalUsed =
+    paymentType === "oneshot" ? supplementalUsed : scheduleTotals.supplementalUsed;
+  const paymentScheduleJson =
+    paymentType === "oneshot" ? null : JSON.stringify(paymentSchedule);
 
   if (!title || !vendor || !owner || !startDate || !endDate || !description) {
     return NextResponse.json(
@@ -126,7 +187,32 @@ export async function POST(request: Request) {
     );
   }
 
-  if (supplementalUsed !== null) {
+  if (paymentType !== "oneshot" && paymentSchedule.length === 0) {
+    return NextResponse.json(
+      { error: "Informe os valores anuais do contrato para este tipo de pagamento." },
+      { status: 400 }
+    );
+  }
+  if (
+    paymentType !== "oneshot" &&
+    paymentSchedule.some((entry) => typeof entry.valueAmount !== "number")
+  ) {
+    return NextResponse.json(
+      { error: "Informe o valor adjudicado para todos os anos selecionados." },
+      { status: 400 }
+    );
+  }
+  if (
+    paymentType !== "oneshot" &&
+    paymentSchedule.some((entry) => typeof entry.valueAmount !== "number")
+  ) {
+    return NextResponse.json(
+      { error: "Informe o valor adjudicado para todos os anos selecionados." },
+      { status: 400 }
+    );
+  }
+
+  if (effectiveSupplementalUsed !== null) {
     const balanceRaw = getIntegrationSetting("contracts_supplemental_balance");
     const balance = balanceRaw ? Number(balanceRaw) : 0;
     const totalUsed = listContracts().reduce((acc, contract) => {
@@ -136,7 +222,7 @@ export async function POST(request: Request) {
       return acc;
     }, 0);
     const available = Math.max(0, (Number.isFinite(balance) ? balance : 0) - totalUsed);
-    if (supplementalUsed > available) {
+    if (effectiveSupplementalUsed > available) {
       return NextResponse.json(
         {
           error:
@@ -160,12 +246,14 @@ export async function POST(request: Request) {
       contractYear: contractYear || null,
       contractScope: contractScope || null,
       management: management || null,
-      supplementalUsed,
+      paymentType,
+      paymentScheduleJson,
+      supplementalUsed: effectiveSupplementalUsed,
       status,
       startDate,
       endDate,
       alertDays,
-      valueAmount,
+      valueAmount: effectiveValueAmount,
       valueCurrency: valueCurrency || null,
       description,
       notes: notes || null,
@@ -217,6 +305,8 @@ export async function PATCH(request: Request) {
     typeof payload.contractScope === "string" ? payload.contractScope.trim() : "";
   const management =
     typeof payload.management === "string" ? payload.management.trim() : "";
+  const paymentType = sanitizePaymentType(payload.paymentType);
+  const paymentSchedule = normalizePaymentSchedule(payload.paymentSchedule);
   const supplementalUsedRaw = parseLocaleNumber(payload.supplementalUsed ?? null);
   const supplementalUsed =
     typeof supplementalUsedRaw === "number" ? Math.max(0, supplementalUsedRaw) : null;
@@ -229,6 +319,13 @@ export async function PATCH(request: Request) {
   const valueCurrency =
     typeof payload.valueCurrency === "string" ? payload.valueCurrency.trim() : "";
   const notes = typeof payload.notes === "string" ? payload.notes.trim() : "";
+  const scheduleTotals = sumScheduleValues(paymentSchedule);
+  const effectiveValueAmount =
+    paymentType === "oneshot" ? valueAmount : scheduleTotals.valueAmount;
+  const effectiveSupplementalUsed =
+    paymentType === "oneshot" ? supplementalUsed : scheduleTotals.supplementalUsed;
+  const paymentScheduleJson =
+    paymentType === "oneshot" ? null : JSON.stringify(paymentSchedule);
 
   if (!title || !vendor || !owner || !startDate || !endDate || !description) {
     return NextResponse.json(
@@ -237,11 +334,19 @@ export async function PATCH(request: Request) {
     );
   }
 
-  if (supplementalUsed !== null) {
+  if (paymentType !== "oneshot" && paymentSchedule.length === 0) {
+    return NextResponse.json(
+      { error: "Informe os valores anuais do contrato para este tipo de pagamento." },
+      { status: 400 }
+    );
+  }
+
+  if (effectiveSupplementalUsed !== null) {
     const balanceRaw = getIntegrationSetting("contracts_supplemental_balance");
     const balance = balanceRaw ? Number(balanceRaw) : 0;
     const existing = getContractById(id);
-    const currentUsed = typeof existing?.supplemental_used === "number" ? existing.supplemental_used : 0;
+    const currentUsed =
+      typeof existing?.supplemental_used === "number" ? existing.supplemental_used : 0;
     const totalUsed = listContracts().reduce((acc, contract) => {
       if (typeof contract.supplemental_used === "number") {
         return acc + contract.supplemental_used;
@@ -250,7 +355,7 @@ export async function PATCH(request: Request) {
     }, 0);
     const adjustedTotal = Math.max(0, totalUsed - currentUsed);
     const available = Math.max(0, (Number.isFinite(balance) ? balance : 0) - adjustedTotal);
-    if (supplementalUsed > available) {
+    if (effectiveSupplementalUsed > available) {
       return NextResponse.json(
         {
           error:
@@ -275,12 +380,14 @@ export async function PATCH(request: Request) {
       contractYear: contractYear || null,
       contractScope: contractScope || null,
       management: management || null,
-      supplementalUsed,
+      paymentType,
+      paymentScheduleJson,
+      supplementalUsed: effectiveSupplementalUsed,
       status,
       startDate,
       endDate,
       alertDays,
-      valueAmount,
+      valueAmount: effectiveValueAmount,
       valueCurrency: valueCurrency || null,
       description,
       notes: notes || null,

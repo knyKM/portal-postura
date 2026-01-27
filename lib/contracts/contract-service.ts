@@ -14,6 +14,8 @@ export type ContractRecord = {
   contract_year: string | null;
   contract_scope: string | null;
   management: string | null;
+  payment_type: string | null;
+  payment_schedule_json: string | null;
   supplemental_used: number | null;
   status: string;
   start_date: string;
@@ -39,6 +41,8 @@ export type ContractInput = {
   contractYear?: string | null;
   contractScope?: string | null;
   management?: string | null;
+  paymentType?: string | null;
+  paymentScheduleJson?: string | null;
   supplementalUsed?: number | null;
   status: string;
   startDate: string;
@@ -58,7 +62,8 @@ export function listContracts() {
   return db
     .prepare<ContractRecord>(
       `SELECT id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract, contract_year,
-              contract_scope, management, supplemental_used, status, start_date, end_date,
+              contract_scope, management, payment_type, payment_schedule_json,
+              supplemental_used, status, start_date, end_date,
               alert_days, value_amount, value_currency, description, notes, created_at, updated_at
        FROM contracts
        ORDER BY end_date ASC, created_at DESC`
@@ -70,7 +75,8 @@ export function getContractById(id: number) {
   return db
     .prepare<ContractRecord>(
       `SELECT id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract, contract_year,
-              contract_scope, management, supplemental_used, status, start_date, end_date,
+              contract_scope, management, payment_type, payment_schedule_json,
+              supplemental_used, status, start_date, end_date,
               alert_days, value_amount, value_currency, description, notes, created_at, updated_at
        FROM contracts
        WHERE id = ?`
@@ -84,12 +90,13 @@ export function createContract(input: ContractInput) {
     .prepare<ContractRecord>(
       `INSERT INTO contracts
         (title, vendor, owner, area, lpu, contract_type, segment, sap_contract, contract_year,
-         contract_scope, management, supplemental_used, status, start_date, end_date, alert_days,
-         value_amount, value_currency, description, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         contract_scope, management, payment_type, payment_schedule_json, supplemental_used,
+         status, start_date, end_date, alert_days, value_amount, value_currency, description,
+         notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract,
-                 contract_year, contract_scope, management, supplemental_used, status, start_date,
-                 end_date,
+                 contract_year, contract_scope, management, payment_type, payment_schedule_json,
+                 supplemental_used, status, start_date, end_date,
                  alert_days, value_amount, value_currency, description, notes, created_at, updated_at`
     )
     .get(
@@ -104,6 +111,8 @@ export function createContract(input: ContractInput) {
       input.contractYear ?? null,
       input.contractScope ?? null,
       input.management ?? null,
+      input.paymentType ?? null,
+      input.paymentScheduleJson ?? null,
       input.supplementalUsed ?? null,
       input.status,
       input.startDate,
@@ -127,12 +136,13 @@ export function updateContract(input: ContractUpdatePayload) {
       `UPDATE contracts
        SET title = ?, vendor = ?, owner = ?, area = ?, lpu = ?, contract_type = ?, segment = ?,
            sap_contract = ?, contract_year = ?, contract_scope = ?, management = ?,
-           supplemental_used = ?, status = ?, start_date = ?, end_date = ?, alert_days = ?,
-           value_amount = ?, value_currency = ?, description = ?, notes = ?, updated_at = ?
+           payment_type = ?, payment_schedule_json = ?, supplemental_used = ?, status = ?,
+           start_date = ?, end_date = ?, alert_days = ?, value_amount = ?, value_currency = ?,
+           description = ?, notes = ?, updated_at = ?
        WHERE id = ?
        RETURNING id, title, vendor, owner, area, lpu, contract_type, segment, sap_contract,
-                 contract_year, contract_scope, management, supplemental_used, status, start_date,
-                 end_date,
+                 contract_year, contract_scope, management, payment_type, payment_schedule_json,
+                 supplemental_used, status, start_date, end_date,
                  alert_days, value_amount, value_currency, description, notes, created_at, updated_at`
     )
     .get(
@@ -147,6 +157,8 @@ export function updateContract(input: ContractUpdatePayload) {
       input.contractYear ?? null,
       input.contractScope ?? null,
       input.management ?? null,
+      input.paymentType ?? null,
+      input.paymentScheduleJson ?? null,
       input.supplementalUsed ?? null,
       input.status,
       input.startDate,

@@ -710,6 +710,8 @@ db.exec(`
     contract_year TEXT,
     contract_scope TEXT,
     management TEXT,
+    payment_type TEXT,
+    payment_schedule_json TEXT,
     status TEXT NOT NULL DEFAULT 'ativo',
     start_date TEXT NOT NULL,
     end_date TEXT NOT NULL,
@@ -740,6 +742,12 @@ const hasContractManagement = contractsTableInfo.some((column) => column.name ==
 const hasContractSupplementalUsed = contractsTableInfo.some(
   (column) => column.name === "supplemental_used"
 );
+const hasContractPaymentType = contractsTableInfo.some(
+  (column) => column.name === "payment_type"
+);
+const hasContractPaymentSchedule = contractsTableInfo.some(
+  (column) => column.name === "payment_schedule_json"
+);
 if (!hasContractSegment) {
   db.exec("ALTER TABLE contracts ADD COLUMN segment TEXT");
 }
@@ -760,6 +768,12 @@ if (!hasContractManagement) {
 }
 if (!hasContractSupplementalUsed) {
   db.exec("ALTER TABLE contracts ADD COLUMN supplemental_used REAL");
+}
+if (!hasContractPaymentType) {
+  db.exec("ALTER TABLE contracts ADD COLUMN payment_type TEXT");
+}
+if (!hasContractPaymentSchedule) {
+  db.exec("ALTER TABLE contracts ADD COLUMN payment_schedule_json TEXT");
 }
 
 db.exec(`

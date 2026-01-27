@@ -26,6 +26,8 @@ type Contract = {
   contract_year: string | null;
   contract_scope: string | null;
   management: string | null;
+  payment_type: string | null;
+  payment_schedule_json: string | null;
   supplemental_used: number | null;
   status: string;
   start_date: string;
@@ -39,11 +41,23 @@ type Contract = {
   updated_at: string;
 };
 
+type PaymentScheduleEntry = {
+  year: string;
+  valueAmount: string;
+  supplementalUsed: string;
+};
+
 const statusOptions = [
   { value: "ativo", label: "Ativo" },
   { value: "em_negociacao", label: "Em negociação" },
   { value: "suspenso", label: "Suspenso" },
   { value: "encerrado", label: "Encerrado" },
+];
+
+const paymentTypeOptions = [
+  { value: "oneshot", label: "Oneshot" },
+  { value: "oneshot_anual", label: "Oneshot anual" },
+  { value: "mensal", label: "Mensal" },
 ];
 
 const segmentOptions = ["CAPEX", "OPEX"];
@@ -118,6 +132,46 @@ function formatPlainCurrency(value: number | null) {
   }).format(value);
 }
 
+function parseScheduleJson(raw?: string | null) {
+  if (!raw) return [] as PaymentScheduleEntry[];
+  try {
+    const parsed = JSON.parse(raw) as Array<{
+      year?: string;
+      valueAmount?: number | null;
+      supplementalUsed?: number | null;
+    }>;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry) => ({
+      year: entry.year ?? "",
+      valueAmount: formatPlainCurrency(
+        typeof entry.valueAmount === "number" ? entry.valueAmount : null
+      ),
+      supplementalUsed: formatPlainCurrency(
+        typeof entry.supplementalUsed === "number" ? entry.supplementalUsed : null
+      ),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function sumScheduleDraft(schedule: PaymentScheduleEntry[]) {
+  return schedule.reduce(
+    (acc, entry) => {
+      const valueAmount = parseCurrencyInput(entry.valueAmount);
+      const supplementalUsed = parseCurrencyInput(entry.supplementalUsed);
+      if (typeof valueAmount === "number") {
+        acc.valueAmount += valueAmount;
+      }
+      if (typeof supplementalUsed === "number") {
+        acc.supplementalUsed += supplementalUsed;
+      }
+      return acc;
+    },
+    { valueAmount: 0, supplementalUsed: 0 }
+  );
+}
+
 function getDaysRemaining(endDate: string) {
   const end = parseLocalDate(endDate);
   if (!end) return null;
@@ -132,6 +186,7 @@ export default function GestaoContratosPage() {
   const router = useRouter();
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const currentYear = new Date().getFullYear();
   const [loading, setLoading] = useState(true);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -180,6 +235,11 @@ export default function GestaoContratosPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [alertDays, setAlertDays] = useState("30");
+  const [paymentType, setPaymentType] = useState("oneshot");
+  const [scheduleYear, setScheduleYear] = useState("");
+  const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleEntry[]>(
+    []
+  );
   const [valueAmount, setValueAmount] = useState("");
   const [valueCurrency, setValueCurrency] = useState("BRL");
   const [description, setDescription] = useState("");
@@ -285,11 +345,13 @@ export default function GestaoContratosPage() {
   const stats = useMemo(() => {
     const today = new Date();
     const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const currentYear = today.getFullYear();
     let active = 0;
     let expiring = 0;
     let expired = 0;
     let supplementalUsedTotal = 0;
     let totalAdjudicatedActive = 0;
+    let oneshotCurrentYearTotal = 0;
     contracts.forEach((contract) => {
       if (contract.status === "encerrado") return;
       if (typeof contract.supplemental_used === "number") {
@@ -301,6 +363,18 @@ export default function GestaoContratosPage() {
         (contract.value_currency ?? "BRL") === "BRL"
       ) {
         totalAdjudicatedActive += contract.value_amount;
+      }
+      if (
+        contract.payment_type === "oneshot" &&
+        typeof contract.value_amount === "number"
+      ) {
+        const year =
+          contract.contract_year && /^\d{4}$/.test(contract.contract_year)
+            ? Number(contract.contract_year)
+            : Number(contract.start_date?.slice(0, 4));
+        if (year === currentYear) {
+          oneshotCurrentYearTotal += contract.value_amount;
+        }
       }
       const daysRemaining = getDaysRemaining(contract.end_date);
       if (daysRemaining !== null && daysRemaining < 0) {
@@ -317,7 +391,14 @@ export default function GestaoContratosPage() {
         active += 1;
       }
     });
-    return { active, expiring, expired, supplementalUsedTotal, totalAdjudicatedActive };
+    return {
+      active,
+      expiring,
+      expired,
+      supplementalUsedTotal,
+      totalAdjudicatedActive,
+      oneshotCurrentYearTotal,
+    };
   }, [contracts, expiringDays]);
 
   const safeBalance = Number.isFinite(supplementalBalance) ? supplementalBalance : 0;
@@ -333,9 +414,16 @@ export default function GestaoContratosPage() {
   }, [editingId, contracts]);
 
   const supplementalAvailable = Math.max(0, safeBalance - safeUsedTotal);
-  const supplementalDraftUsed = supplementalUsed
-    ? parseCurrencyInput(supplementalUsed) ?? 0
-    : 0;
+  const scheduleTotals = useMemo(
+    () => sumScheduleDraft(paymentSchedule),
+    [paymentSchedule]
+  );
+  const supplementalDraftUsed =
+    paymentType === "oneshot"
+      ? supplementalUsed
+        ? parseCurrencyInput(supplementalUsed) ?? 0
+        : 0
+      : scheduleTotals.supplementalUsed;
   const supplementalDraftDelta = editingId
     ? Math.max(0, supplementalDraftUsed - editingContractUsed)
     : supplementalDraftUsed;
@@ -352,6 +440,11 @@ export default function GestaoContratosPage() {
     }
     return years;
   }, []);
+
+  const scheduleYearOptions = useMemo(() => {
+    const used = new Set(paymentSchedule.map((entry) => entry.year));
+    return contractYearOptions.filter((year) => !used.has(year));
+  }, [contractYearOptions, paymentSchedule]);
 
   function resetForm() {
     setTitle("");
@@ -375,6 +468,9 @@ export default function GestaoContratosPage() {
     setStartDate("");
     setEndDate("");
     setAlertDays("30");
+    setPaymentType("oneshot");
+    setScheduleYear("");
+    setPaymentSchedule([]);
     setValueAmount("");
     setValueCurrency("BRL");
     setDescription("");
@@ -422,6 +518,9 @@ export default function GestaoContratosPage() {
     setManagementCustom(managementResolved.custom);
     setResponsibleSelect(responsibleResolved.selected);
     setResponsibleCustom(responsibleResolved.custom);
+    setPaymentType(contract.payment_type ?? "oneshot");
+    setPaymentSchedule(parseScheduleJson(contract.payment_schedule_json));
+    setScheduleYear("");
     setStatus(contract.status);
     setStartDate(contract.start_date);
     setEndDate(contract.end_date);
@@ -453,6 +552,21 @@ export default function GestaoContratosPage() {
       responsibleSelect === CUSTOM_OPTION_VALUE ? responsibleCustom : responsibleSelect;
     const yearValue =
       contractYear === CUSTOM_OPTION_VALUE ? contractYearCustom : contractYear;
+    const schedulePayload =
+      paymentType === "oneshot"
+        ? []
+        : paymentSchedule
+            .filter((entry) => entry.year)
+            .map((entry) => ({
+              year: entry.year,
+              valueAmount: entry.valueAmount
+                ? parseCurrencyInput(entry.valueAmount)
+                : null,
+              supplementalUsed: entry.supplementalUsed
+                ? parseCurrencyInput(entry.supplementalUsed)
+                : null,
+            }));
+    const scheduleTotals = sumScheduleDraft(paymentSchedule);
     const payload = {
       id: editingId ?? undefined,
       title,
@@ -466,16 +580,44 @@ export default function GestaoContratosPage() {
       contractYear: yearValue || null,
       contractScope: scopeValue || null,
       management: managementValue || null,
+      paymentType,
+      paymentSchedule: schedulePayload,
       status,
       startDate,
       endDate,
       alertDays: Number(alertDays),
-      valueAmount: valueAmount ? parseCurrencyInput(valueAmount) : null,
+      valueAmount:
+        paymentType === "oneshot"
+          ? valueAmount
+            ? parseCurrencyInput(valueAmount)
+            : null
+          : scheduleTotals.valueAmount,
       valueCurrency,
       description,
       notes,
-      supplementalUsed: supplementalUsed ? parseCurrencyInput(supplementalUsed) : null,
+      supplementalUsed:
+        paymentType === "oneshot"
+          ? supplementalUsed
+            ? parseCurrencyInput(supplementalUsed)
+            : null
+          : scheduleTotals.supplementalUsed,
     };
+
+    if (paymentType !== "oneshot" && schedulePayload.length === 0) {
+      setSaving(false);
+      setError("Informe os valores anuais do contrato para este tipo de pagamento.");
+      return;
+    }
+    if (
+      paymentType !== "oneshot" &&
+      schedulePayload.some(
+        (entry) => typeof entry.valueAmount !== "number" || !Number.isFinite(entry.valueAmount)
+      )
+    ) {
+      setSaving(false);
+      setError("Informe o valor adjudicado para todos os anos selecionados.");
+      return;
+    }
 
     if (payload.supplementalUsed !== null) {
       const available =
@@ -598,7 +740,7 @@ export default function GestaoContratosPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
           {[
             {
               label: "Ativos",
@@ -634,6 +776,13 @@ export default function GestaoContratosPage() {
               icon: FileSignature,
               accent: "from-indigo-500/20 via-indigo-500/5 to-transparent",
               border: "border-indigo-500/40",
+            },
+            {
+              label: `Oneshot ${currentYear}`,
+              value: formatCurrency(stats.oneshotCurrentYearTotal, "BRL"),
+              icon: FileSignature,
+              accent: "from-purple-500/20 via-purple-500/5 to-transparent",
+              border: "border-purple-500/40",
             },
           ].map((card) => (
             <Card
@@ -990,12 +1139,12 @@ export default function GestaoContratosPage() {
                       isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
                     )}
                   />
-                  <Input
+                  <Textarea
                     value={lpu}
                     onChange={(event) => setLpu(event.target.value)}
                     placeholder="LPU"
                     className={cn(
-                      "h-10 rounded-xl text-sm",
+                      "min-h-[80px] rounded-xl text-sm md:col-span-2",
                       isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
                     )}
                   />
@@ -1067,28 +1216,175 @@ export default function GestaoContratosPage() {
                       )}
                     />
                   )}
-                  <Input
-                    value={valueAmount}
-                    onChange={(event) =>
-                      setValueAmount(formatCurrencyInput(event.target.value))
-                    }
-                    placeholder="Valor adjudicado (R$)"
+                  <select
+                    value={paymentType}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setPaymentType(next);
+                      if (next === "oneshot") {
+                        setPaymentSchedule([]);
+                        setScheduleYear("");
+                      }
+                    }}
                     className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
                     )}
-                  />
-                  <Input
-                    value={supplementalUsed}
-                    onChange={(event) =>
-                      setSupplementalUsed(formatCurrencyInput(event.target.value))
-                    }
-                    placeholder="Saldo utilizado (R$)"
-                    className={cn(
-                      "h-10 rounded-xl text-sm",
-                      isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                    )}
-                  />
+                  >
+                    <option value="">Selecionar forma de pagamento</option>
+                    {paymentTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {paymentType !== "oneshot" && (
+                    <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-white/10 p-3 text-xs text-zinc-400 md:col-span-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={scheduleYear}
+                          onChange={(event) => setScheduleYear(event.target.value)}
+                          className={cn(
+                            "h-9 rounded-xl border px-3 text-xs",
+                            isDark
+                              ? "border-white/10 bg-black/40 text-white"
+                              : "border-slate-200 bg-white text-slate-700"
+                          )}
+                        >
+                          <option value="">Selecionar ano</option>
+                          {scheduleYearOptions.map((year) => (
+                            <option key={year} value={year}>
+                              {year}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            if (!scheduleYear) return;
+                            setPaymentSchedule((prev) => [
+                              ...prev,
+                              { year: scheduleYear, valueAmount: "", supplementalUsed: "" },
+                            ]);
+                            setScheduleYear("");
+                          }}
+                        >
+                          Adicionar ano
+                        </Button>
+                      </div>
+                      {paymentSchedule.length === 0 ? (
+                        <p>Adicione ao menos um ano para registrar valores.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {paymentSchedule.map((entry, index) => (
+                            <div
+                              key={`${entry.year}-${index}`}
+                              className={cn(
+                                "rounded-xl border p-3",
+                                isDark
+                                  ? "border-white/10 bg-black/40"
+                                  : "border-slate-200 bg-white"
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                                  Ano {entry.year}
+                                </p>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setPaymentSchedule((prev) =>
+                                      prev.filter((_, itemIndex) => itemIndex !== index)
+                                    )
+                                  }
+                                >
+                                  Remover
+                                </Button>
+                              </div>
+                              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                <Input
+                                  value={entry.valueAmount}
+                                  onChange={(event) => {
+                                    const next = formatCurrencyInput(event.target.value);
+                                    setPaymentSchedule((prev) =>
+                                      prev.map((item, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...item, valueAmount: next }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  placeholder="Valor adjudicado (R$)"
+                                  className={cn(
+                                    "h-9 rounded-xl text-xs",
+                                    isDark
+                                      ? "border-white/10 bg-black/40 text-white"
+                                      : "border-slate-200"
+                                  )}
+                                />
+                                <Input
+                                  value={entry.supplementalUsed}
+                                  onChange={(event) => {
+                                    const next = formatCurrencyInput(event.target.value);
+                                    setPaymentSchedule((prev) =>
+                                      prev.map((item, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...item, supplementalUsed: next }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  placeholder="Saldo utilizado (R$)"
+                                  className={cn(
+                                    "h-9 rounded-xl text-xs",
+                                    isDark
+                                      ? "border-white/10 bg-black/40 text-white"
+                                      : "border-slate-200"
+                                  )}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {paymentType === "oneshot" && (
+                    <>
+                      <Input
+                        value={valueAmount}
+                        onChange={(event) =>
+                          setValueAmount(formatCurrencyInput(event.target.value))
+                        }
+                        placeholder="Valor adjudicado (R$)"
+                        className={cn(
+                          "h-10 rounded-xl text-sm",
+                          isDark
+                            ? "border-white/10 bg-black/40 text-white"
+                            : "border-slate-200"
+                        )}
+                      />
+                      <Input
+                        value={supplementalUsed}
+                        onChange={(event) =>
+                          setSupplementalUsed(formatCurrencyInput(event.target.value))
+                        }
+                        placeholder="Saldo utilizado (R$)"
+                        className={cn(
+                          "h-10 rounded-xl text-sm",
+                          isDark
+                            ? "border-white/10 bg-black/40 text-white"
+                            : "border-slate-200"
+                        )}
+                      />
+                    </>
+                  )}
                   <p className="text-[11px] text-zinc-500 md:col-span-2">
                     Disponível: {formatCurrency(supplementalAvailable, "BRL")}
                   </p>
