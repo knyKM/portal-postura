@@ -31,13 +31,25 @@ type BaseSdAsset = {
 
 const coverageLabels = [
   "Cofre",
-  "Tenable",
+  "Tenable Scans",
+  "Tenable Agents",
   "Guardicore",
   "Deep Security",
   "Crowdstrike",
   "Wazuh",
   "Trellix",
 ];
+
+const coverageMatchers: Record<string, string[]> = {
+  Cofre: ["cofre"],
+  "Tenable Scans": ["tenable scans", "tenable scan", "tenable"],
+  "Tenable Agents": ["tenable agents", "tenable agent"],
+  Guardicore: ["guardicore"],
+  "Deep Security": ["deep security", "deepsecurity"],
+  Crowdstrike: ["crowdstrike"],
+  Wazuh: ["wazuh"],
+  Trellix: ["trellix"],
+};
 
 function normalizeCoverageValue(value: string) {
   return value.trim().toLowerCase();
@@ -95,12 +107,17 @@ export default function BaseSdPage() {
     assets.forEach((asset) => {
       const hostnameKey = (asset.hostname ?? "—").trim() || "—";
       const rawCoverage = asset.coverage_tools ?? "";
-      const coverageSet = new Set(
-        rawCoverage
-          .split(",")
-          .map((value) => normalizeCoverageValue(value))
-          .filter(Boolean)
-      );
+      const coverageTokens = rawCoverage
+        .split(",")
+        .map((value) => normalizeCoverageValue(value))
+        .filter(Boolean);
+      const coverageSet = new Set<string>();
+      coverageLabels.forEach((label) => {
+        const matchers = coverageMatchers[label] ?? [normalizeCoverageValue(label)];
+        if (matchers.some((matcher) => coverageTokens.some((token) => token.includes(matcher)))) {
+          coverageSet.add(normalizeCoverageValue(label));
+        }
+      });
       const ipValue = (asset.ip ?? "").trim();
 
       if (!grouped.has(hostnameKey)) {
@@ -176,60 +193,69 @@ export default function BaseSdPage() {
   }
 
   return (
-    <DashboardShell
-      pageTitle="Base SD"
-      pageSubtitle="Base de ativos para gestão de segurança e governança."
-    >
+    <DashboardShell pageTitle="Base SD" pageSubtitle="Base de ativos operacional.">
       <div className="flex w-full flex-col gap-6 px-4 pb-10 lg:px-10">
-        <div
+        <section
           className={cn(
-            "rounded-3xl border p-6",
+            "relative overflow-hidden rounded-3xl border px-6 py-6",
             isDark
-              ? "border-white/10 bg-[#050816] text-zinc-200"
-              : "border-slate-200 bg-white text-slate-700"
+              ? "border-white/10 bg-gradient-to-br from-[#0b1226] via-[#080717] to-[#0a0217] text-zinc-100"
+              : "border-slate-200 bg-white text-slate-900"
           )}
         >
-          <p className="text-sm">
-            Envie um CSV para carregar a base inicial. O delimitador pode ser “;”
-            ou “,”.
-          </p>
-          <p className="mt-2 text-xs text-zinc-500">
-            Headers esperados: Hostname, Mês inclusão, Type, CMDB, TLV CMDB, Valid, IP,
-            SO, Cobertura atual - Ferramentas, Observação Cofre, Observação Tenable,
-            Observação Guardicore, Observação Deep Security, Observação Crowdstrike,
-            Observação Wazuh, Observação Trellix.
-          </p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              className={cn(
-                "w-full rounded-2xl text-sm sm:w-96",
-                isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-              )}
-            />
-            <Button
-              type="button"
-              className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
-              disabled={loading}
-              onClick={handleUpload}
-            >
-              {loading ? "Importando..." : "Importar CSV"}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="rounded-2xl"
-              disabled={clearing}
-              onClick={handleClear}
-            >
-              {clearing ? "Limpando..." : "Limpar base"}
-            </Button>
+          <div className="absolute right-6 top-6 h-24 w-24 rounded-full bg-purple-500/10 blur-2xl" />
+          <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                Importação de ativos
+              </p>
+              <h1 className="text-2xl font-semibold">Base SD</h1>
+              <p className="max-w-2xl text-sm text-zinc-400">
+                Envie o CSV com delimitador “;” ou “,” para alimentar o cadastro.
+                Os ativos processados ficam listados logo abaixo.
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                Headers: Hostname, Mês inclusão, Type, CMDB, TLV CMDB, Valid, IP,
+                SO, Cobertura atual - Ferramentas, Observação Cofre, Observação Tenable,
+                Observação Guardicore, Observação Deep Security, Observação Crowdstrike,
+                Observação Wazuh, Observação Trellix.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
+              <Input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                className={cn(
+                  "w-full rounded-2xl text-sm sm:w-80",
+                  isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                )}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                  disabled={loading}
+                  onClick={handleUpload}
+                >
+                  {loading ? "Importando..." : "Importar CSV"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="rounded-2xl"
+                  disabled={clearing}
+                  onClick={handleClear}
+                >
+                  {clearing ? "Limpando..." : "Limpar base"}
+                </Button>
+              </div>
+            </div>
           </div>
           {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
           {success && <p className="mt-3 text-xs text-emerald-400">{success}</p>}
-        </div>
+        </section>
+
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {loadingList && assets.length === 0 ? (
             <div
@@ -258,13 +284,16 @@ export default function BaseSdPage() {
               <div
                 key={asset.id ?? `${asset.hostname}-${index}`}
                 className={cn(
-                  "rounded-2xl border p-4",
+                  "group relative overflow-hidden rounded-2xl border p-4",
                   isDark
                     ? "border-white/10 bg-[#050816] text-zinc-100"
                     : "border-slate-200 bg-white text-slate-800"
                 )}
               >
-                <p className="text-sm font-semibold text-white">{asset.hostname || "—"}</p>
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                <p className="relative text-base font-semibold text-white">
+                  {asset.hostname || "—"}
+                </p>
                 <div className="mt-2 space-y-1 text-xs text-zinc-400">
                   <p>Mês inclusão: {asset.month_inclusion || "—"}</p>
                   <p>IP: {ips.length ? ips.join(", ") : "—"}</p>
@@ -291,7 +320,7 @@ export default function BaseSdPage() {
                     );
                   })}
                 </div>
-                <div className="mt-3 flex justify-end">
+                <div className="mt-4 flex justify-end">
                   <Button
                     type="button"
                     size="sm"

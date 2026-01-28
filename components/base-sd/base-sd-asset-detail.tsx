@@ -11,7 +11,8 @@ import { useTheme } from "@/components/theme/theme-provider";
 
 const coverageLabels = [
   "Cofre",
-  "Tenable",
+  "Tenable Scans",
+  "Tenable Agents",
   "Guardicore",
   "Deep Security",
   "Crowdstrike",
@@ -19,9 +20,21 @@ const coverageLabels = [
   "Trellix",
 ];
 
+const coverageMatchers: Record<string, string[]> = {
+  Cofre: ["cofre"],
+  "Tenable Scans": ["tenable scans", "tenable scan", "tenable"],
+  "Tenable Agents": ["tenable agents", "tenable agent"],
+  Guardicore: ["guardicore"],
+  "Deep Security": ["deep security", "deepsecurity"],
+  Crowdstrike: ["crowdstrike"],
+  Wazuh: ["wazuh"],
+  Trellix: ["trellix"],
+};
+
 const coverageObservationKey: Record<string, string> = {
   Cofre: "obs_cofre",
-  Tenable: "obs_tenable",
+  "Tenable Scans": "obs_tenable",
+  "Tenable Agents": "obs_tenable",
   Guardicore: "obs_guardicore",
   "Deep Security": "obs_deep_security",
   Crowdstrike: "obs_crowdstrike",
@@ -96,12 +109,18 @@ export function BaseSdAssetDetail({ assetId }: { assetId: number }) {
 
   const coverageSet = useMemo(() => {
     if (!asset?.coverage_tools) return new Set<string>();
-    return new Set(
-      asset.coverage_tools
-        .split(",")
-        .map((value) => normalizeCoverageValue(value))
-        .filter(Boolean)
-    );
+    const tokens = asset.coverage_tools
+      .split(",")
+      .map((value) => normalizeCoverageValue(value))
+      .filter(Boolean);
+    const result = new Set<string>();
+    coverageLabels.forEach((label) => {
+      const matchers = coverageMatchers[label] ?? [normalizeCoverageValue(label)];
+      if (matchers.some((matcher) => tokens.some((token) => token.includes(matcher)))) {
+        result.add(normalizeCoverageValue(label));
+      }
+    });
+    return result;
   }, [asset?.coverage_tools]);
 
   const activeObservation = useMemo(() => {
@@ -112,20 +131,27 @@ export function BaseSdAssetDetail({ assetId }: { assetId: number }) {
   }, [asset, activeBadge]);
 
   return (
-    <DashboardShell
-      pageTitle="Base SD"
-      pageSubtitle="Detalhes do ativo selecionado."
-    >
+    <DashboardShell pageTitle="Base SD" pageSubtitle="Detalhes do ativo selecionado.">
       <div className="flex w-full flex-col gap-6 px-4 pb-10 lg:px-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Ativo</p>
-            <h1 className="text-2xl font-semibold">{asset?.hostname ?? "—"}</h1>
+        <section
+          className={cn(
+            "relative overflow-hidden rounded-3xl border px-6 py-6",
+            isDark
+              ? "border-white/10 bg-gradient-to-br from-[#0b1226] via-[#080717] to-[#0a0217] text-zinc-100"
+              : "border-slate-200 bg-white text-slate-900"
+          )}
+        >
+          <div className="absolute right-6 top-6 h-20 w-20 rounded-full bg-purple-500/10 blur-2xl" />
+          <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Ativo</p>
+              <h1 className="text-2xl font-semibold">{asset?.hostname ?? "—"}</h1>
+            </div>
+            <Button type="button" variant="secondary" onClick={() => router.push("/base-sd")}>
+              Voltar
+            </Button>
           </div>
-          <Button type="button" variant="secondary" onClick={() => router.push("/base-sd")}>
-            Voltar
-          </Button>
-        </div>
+        </section>
 
         {loading && (
           <div
