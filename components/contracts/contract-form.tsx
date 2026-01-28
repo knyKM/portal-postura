@@ -247,6 +247,58 @@ export function ContractForm({
 
   useEffect(() => {
     let active = true;
+    function applyContract(contract: Contract) {
+      const segmentResolved = resolveSelectValue(contract.segment ?? "", segmentOptions);
+      const scopeResolved = resolveSelectValue(contract.contract_scope ?? "", scopeOptions);
+      const managementResolved = resolveSelectValue(
+        contract.management ?? "",
+        managementOptions
+      );
+      const responsibleResolved = resolveSelectValue(
+        contract.owner ?? "",
+        responsibleOptions
+      );
+      setTitle(contract.title);
+      setVendor(contract.vendor);
+      setOwner(contract.owner);
+      setArea(contract.area ?? "");
+      setLpu(contract.lpu ?? "");
+      setLpuImage(contract.lpu_image ?? null);
+      setContractType(contract.contract_type ?? "");
+      setSegmentSelect(segmentResolved.selected);
+      setSegmentCustom(segmentResolved.custom);
+      setSapContract(contract.sap_contract ?? "");
+      if (contract.contract_year && !contractYearOptions.includes(contract.contract_year)) {
+        setContractYear(CUSTOM_OPTION_VALUE);
+        setContractYearCustom(contract.contract_year);
+      } else {
+        setContractYear(contract.contract_year ?? "");
+        setContractYearCustom("");
+      }
+      setScopeSelect(scopeResolved.selected);
+      setScopeCustom(scopeResolved.custom);
+      setManagementSelect(managementResolved.selected);
+      setManagementCustom(managementResolved.custom);
+      setResponsibleSelect(responsibleResolved.selected);
+      setResponsibleCustom(responsibleResolved.custom);
+      setPaymentType(contract.payment_type ?? "oneshot");
+      setPaymentSchedule(parseScheduleJson(contract.payment_schedule_json));
+      setScheduleYear("");
+      setStatus(contract.status);
+      setStartDate(contract.start_date);
+      setEndDate(contract.end_date);
+      setAlertDays(String(contract.alert_days ?? 30));
+      setValueAmount(formatPlainCurrency(contract.value_amount));
+      setValueCurrency(contract.value_currency ?? "BRL");
+      setDescription(contract.description ?? "");
+      setNotes(contract.notes ?? "");
+      setSupplementalUsed(
+        typeof contract.supplemental_used === "number"
+          ? formatPlainCurrency(contract.supplemental_used)
+          : ""
+      );
+    }
+
     async function fetchSettings() {
       try {
         const response = await fetch("/api/contracts/settings");
@@ -273,59 +325,23 @@ export function ContractForm({
         const list = Array.isArray(data?.contracts) ? data.contracts : [];
         setContracts(list);
         if (isEdit && contractId) {
-          const contract = list.find((item: Contract) => item.id === contractId);
-          if (!contract) {
-            throw new Error("Contrato não encontrado.");
-          }
-          const segmentResolved = resolveSelectValue(contract.segment ?? "", segmentOptions);
-          const scopeResolved = resolveSelectValue(contract.contract_scope ?? "", scopeOptions);
-          const managementResolved = resolveSelectValue(
-            contract.management ?? "",
-            managementOptions
+          const contract = list.find(
+            (item: Contract) => String(item.id) === String(contractId)
           );
-          const responsibleResolved = resolveSelectValue(
-            contract.owner ?? "",
-            responsibleOptions
-          );
-          setTitle(contract.title);
-          setVendor(contract.vendor);
-          setOwner(contract.owner);
-          setArea(contract.area ?? "");
-          setLpu(contract.lpu ?? "");
-          setLpuImage(contract.lpu_image ?? null);
-          setContractType(contract.contract_type ?? "");
-          setSegmentSelect(segmentResolved.selected);
-          setSegmentCustom(segmentResolved.custom);
-          setSapContract(contract.sap_contract ?? "");
-          if (contract.contract_year && !contractYearOptions.includes(contract.contract_year)) {
-            setContractYear(CUSTOM_OPTION_VALUE);
-            setContractYearCustom(contract.contract_year);
+          if (contract) {
+            applyContract(contract);
           } else {
-            setContractYear(contract.contract_year ?? "");
-            setContractYearCustom("");
+            const detailResponse = await fetch(`/api/contracts?id=${contractId}`);
+            const detailData = await detailResponse.json().catch(() => null);
+            if (!detailResponse.ok) {
+              throw new Error(detailData?.error || "Contrato não encontrado.");
+            }
+            if (detailData?.contract) {
+              applyContract(detailData.contract as Contract);
+            } else {
+              throw new Error("Contrato não encontrado.");
+            }
           }
-          setScopeSelect(scopeResolved.selected);
-          setScopeCustom(scopeResolved.custom);
-          setManagementSelect(managementResolved.selected);
-          setManagementCustom(managementResolved.custom);
-          setResponsibleSelect(responsibleResolved.selected);
-          setResponsibleCustom(responsibleResolved.custom);
-          setPaymentType(contract.payment_type ?? "oneshot");
-          setPaymentSchedule(parseScheduleJson(contract.payment_schedule_json));
-          setScheduleYear("");
-          setStatus(contract.status);
-          setStartDate(contract.start_date);
-          setEndDate(contract.end_date);
-          setAlertDays(String(contract.alert_days ?? 30));
-          setValueAmount(formatPlainCurrency(contract.value_amount));
-          setValueCurrency(contract.value_currency ?? "BRL");
-          setDescription(contract.description ?? "");
-          setNotes(contract.notes ?? "");
-          setSupplementalUsed(
-            typeof contract.supplemental_used === "number"
-              ? formatPlainCurrency(contract.supplemental_used)
-              : ""
-          );
         }
       } catch (err) {
         if (!active) return;

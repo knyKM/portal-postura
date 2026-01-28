@@ -117,6 +117,19 @@ export async function GET(request: Request) {
   }
 
   try {
+    const url = new URL(request.url);
+    const idParam = url.searchParams.get("id");
+    if (idParam) {
+      const id = Number(idParam);
+      if (!Number.isFinite(id) || id <= 0) {
+        return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+      }
+      const contract = getContractById(id);
+      if (!contract) {
+        return NextResponse.json({ error: "Contrato não encontrado." }, { status: 404 });
+      }
+      return NextResponse.json({ contract });
+    }
     return NextResponse.json({ contracts: listContracts() });
   } catch (error) {
     console.error("[contracts:GET]", error);

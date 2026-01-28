@@ -1,10 +1,11 @@
 import { ContractForm } from "@/components/contracts/contract-form";
 
-export default function EditarContratoPage({
+export default async function EditarContratoPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const contractId = Number(params.id ?? 0);
+  const resolvedParams = await params;
+  const contractId = Number(resolvedParams?.id ?? 0);
   return <ContractForm mode="edit" contractId={contractId} />;
 }
