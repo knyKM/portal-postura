@@ -41,7 +41,23 @@ export type BaseSdAssetInput = {
   obsTrellix?: string | null;
 };
 
-export function listBaseSdAssets(limit = 200, offset = 0) {
+export function listBaseSdAssets(limit = 200, offset = 0, query = "") {
+  const term = query.trim();
+  const hasQuery = term.length > 0;
+  const like = `%${term}%`;
+  if (hasQuery) {
+    return db
+      .prepare<BaseSdAssetRecord>(
+        `SELECT id, hostname, month_inclusion, asset_type, cmdb, tlv_cmdb, valid, ip, os,
+                coverage_tools, obs_cofre, obs_tenable, obs_guardicore, obs_deep_security,
+                obs_crowdstrike, obs_wazuh, obs_trellix, created_at
+         FROM base_sd_assets
+         WHERE hostname LIKE ? OR ip LIKE ?
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`
+      )
+      .all(like, like, limit, offset);
+  }
   return db
     .prepare<BaseSdAssetRecord>(
       `SELECT id, hostname, month_inclusion, asset_type, cmdb, tlv_cmdb, valid, ip, os,
@@ -64,6 +80,24 @@ export function getBaseSdAssetById(id: number) {
        WHERE id = ?`
     )
     .get(id);
+}
+
+export function countBaseSdAssets(query = "") {
+  const term = query.trim();
+  const hasQuery = term.length > 0;
+  const like = `%${term}%`;
+  if (hasQuery) {
+    const row = db
+      .prepare<{ total: number }>(
+        "SELECT COUNT(*) as total FROM base_sd_assets WHERE hostname LIKE ? OR ip LIKE ?"
+      )
+      .get(like, like);
+    return row?.total ?? 0;
+  }
+  const row = db
+    .prepare<{ total: number }>("SELECT COUNT(*) as total FROM base_sd_assets")
+    .get();
+  return row?.total ?? 0;
 }
 
 export function insertBaseSdAssets(records: BaseSdAssetInput[]) {

@@ -66,21 +66,28 @@ export default function BaseSdPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [assets, setAssets] = useState<BaseSdAsset[]>([]);
+  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const pageSize = 20;
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [showImport, setShowImport] = useState(true);
 
   useEffect(() => {
     let active = true;
     async function fetchAssets() {
       setLoadingList(true);
       try {
-        const response = await fetch(`/api/base-sd?limit=${pageSize}&page=${page}`);
+        const response = await fetch(
+          `/api/base-sd?limit=${pageSize}&page=${page}&q=${encodeURIComponent(query)}`
+        );
         const data = await response.json().catch(() => null);
         if (!response.ok) {
           throw new Error(data?.error || "Não foi possível carregar os ativos.");
         }
         if (active) {
           setAssets(Array.isArray(data?.assets) ? data.assets : []);
+          setTotal(typeof data?.total === "number" ? data.total : 0);
         }
       } catch (err) {
         if (active) {
@@ -94,7 +101,7 @@ export default function BaseSdPage() {
     return () => {
       active = false;
     };
-  }, [page]);
+  }, [page, query]);
 
   const assetCards = useMemo(() => {
     const grouped = new Map<
@@ -165,10 +172,12 @@ export default function BaseSdPage() {
       if (page === 1) {
         setAssets((prev) => [...inserted, ...prev].slice(0, pageSize));
       }
+      setTotal(typeof data?.inserted === "number" ? data.inserted : inserted.length);
       setSuccess(
         `Importação concluída: ${data?.inserted ?? 0} registros inseridos, ${data?.skipped ?? 0} ignorados.`
       );
       setFile(null);
+      setShowImport(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao importar CSV.");
     } finally {
@@ -188,7 +197,9 @@ export default function BaseSdPage() {
         throw new Error(data?.error || "Não foi possível limpar a base.");
       }
       setAssets([]);
+      setTotal(0);
       setPage(1);
+      setShowImport(true);
       setSuccess("Base SD limpa com sucesso.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao limpar base.");
@@ -200,65 +211,108 @@ export default function BaseSdPage() {
   return (
     <DashboardShell pageTitle="Base SD" pageSubtitle="Base de ativos operacional.">
       <div className="flex w-full flex-col gap-6 px-4 pb-10 lg:px-10">
-        <section
-          className={cn(
-            "relative overflow-hidden rounded-3xl border px-6 py-6",
-            isDark
-              ? "border-white/10 bg-gradient-to-br from-[#0b1226] via-[#080717] to-[#0a0217] text-zinc-100"
-              : "border-slate-200 bg-white text-slate-900"
-          )}
-        >
-          <div className="absolute right-6 top-6 h-24 w-24 rounded-full bg-purple-500/10 blur-2xl" />
-          <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
-                Importação de ativos
-              </p>
-              <h1 className="text-2xl font-semibold">Base SD</h1>
-              <p className="max-w-2xl text-sm text-zinc-400">
-                Envie o CSV com delimitador “;” ou “,” para alimentar o cadastro.
-                Os ativos processados ficam listados logo abaixo.
-              </p>
-              <p className="text-[11px] text-zinc-500">
-                Headers: Hostname, Mês inclusão, Type, CMDB, TLV CMDB, Valid, IP,
-                SO, Cobertura atual - Ferramentas, Observação Cofre, Observação Tenable,
-                Observação Guardicore, Observação Deep Security, Observação Crowdstrike,
-                Observação Wazuh, Observação Trellix.
-              </p>
-            </div>
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
-              <Input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                className={cn(
-                  "w-full rounded-2xl text-sm sm:w-80",
-                  isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
-                )}
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
-                  disabled={loading}
-                  onClick={handleUpload}
-                >
-                  {loading ? "Importando..." : "Importar CSV"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="rounded-2xl"
-                  disabled={clearing}
-                  onClick={handleClear}
-                >
-                  {clearing ? "Limpando..." : "Limpar base"}
-                </Button>
+        {showImport && (
+          <section
+            className={cn(
+              "relative overflow-hidden rounded-3xl border px-6 py-6",
+              isDark
+                ? "border-white/10 bg-gradient-to-br from-[#0b1226] via-[#080717] to-[#0a0217] text-zinc-100"
+                : "border-slate-200 bg-white text-slate-900"
+            )}
+          >
+            <div className="absolute right-6 top-6 h-24 w-24 rounded-full bg-purple-500/10 blur-2xl" />
+            <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                  Importação de ativos
+                </p>
+                <h1 className="text-2xl font-semibold">Base SD</h1>
+                <p className="max-w-2xl text-sm text-zinc-400">
+                  Envie o CSV com delimitador “;” ou “,” para alimentar o cadastro.
+                  Os ativos processados ficam listados logo abaixo.
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Headers: Hostname, Mês inclusão, Type, CMDB, TLV CMDB, Valid, IP,
+                  SO, Cobertura atual - Ferramentas, Observação Cofre, Observação Tenable,
+                  Observação Guardicore, Observação Deep Security, Observação Crowdstrike,
+                  Observação Wazuh, Observação Trellix.
+                </p>
+              </div>
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
+                <Input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                  className={cn(
+                    "w-full rounded-2xl text-sm sm:w-80",
+                    isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+                  )}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                    disabled={loading}
+                    onClick={handleUpload}
+                  >
+                    {loading ? "Importando..." : "Importar CSV"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="rounded-2xl"
+                    disabled={clearing}
+                    onClick={handleClear}
+                  >
+                    {clearing ? "Limpando..." : "Limpar base"}
+                  </Button>
+                </div>
               </div>
             </div>
+            {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
+            {success && <p className="mt-3 text-xs text-emerald-400">{success}</p>}
+          </section>
+        )}
+
+        {!showImport && (
+          <section
+            className={cn(
+              "rounded-2xl border px-4 py-3 text-xs",
+              isDark
+                ? "border-white/10 bg-[#050816] text-zinc-400"
+                : "border-slate-200 bg-white text-slate-600"
+            )}
+          >
+            Importação concluída. Use “Limpar base” para enviar uma nova carga.
+          </section>
+        )}
+
+        <section className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+            Total: {total}
           </div>
-          {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
-          {success && <p className="mt-3 text-xs text-emerald-400">{success}</p>}
+          <div className="flex flex-1 items-center justify-end gap-2">
+            <Input
+              value={queryInput}
+              onChange={(event) => setQueryInput(event.target.value)}
+              placeholder="Buscar ativo por hostname ou IP"
+              className={cn(
+                "w-full max-w-xs rounded-2xl text-sm",
+                isDark ? "border-white/10 bg-black/40 text-white" : "border-slate-200"
+              )}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+              onClick={() => {
+                setPage(1);
+                setQuery(queryInput.trim());
+              }}
+            >
+              Buscar
+            </Button>
+          </div>
         </section>
 
         <section className="flex flex-wrap items-center justify-between gap-3">
