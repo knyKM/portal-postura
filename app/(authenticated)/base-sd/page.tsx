@@ -52,6 +52,7 @@ export default function BaseSdPage() {
   const [loadingList, setLoadingList] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [assets, setAssets] = useState<BaseSdAsset[]>([]);
 
   useEffect(() => {
@@ -154,6 +155,26 @@ export default function BaseSdPage() {
     }
   }
 
+  async function handleClear() {
+    if (!window.confirm("Tem certeza que deseja apagar toda a base SD?")) return;
+    setClearing(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch("/api/base-sd/clear", { method: "DELETE" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível limpar a base.");
+      }
+      setAssets([]);
+      setSuccess("Base SD limpa com sucesso.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao limpar base.");
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
     <DashboardShell
       pageTitle="Base SD"
@@ -195,6 +216,15 @@ export default function BaseSdPage() {
               onClick={handleUpload}
             >
               {loading ? "Importando..." : "Importar CSV"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-2xl"
+              disabled={clearing}
+              onClick={handleClear}
+            >
+              {clearing ? "Limpando..." : "Limpar base"}
             </Button>
           </div>
           {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
