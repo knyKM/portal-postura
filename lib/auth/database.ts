@@ -306,6 +306,7 @@ const defaultAllowedRoutes = JSON.stringify([
   "/playbooks",
   "/ferramentas",
   "/gestao-contratos",
+  "/base-sd",
   "/auditoria",
   "/sugestoes-problemas",
   "/sugestoes",
@@ -336,6 +337,7 @@ const requiredRoutes = [
   "/sugestoes",
   "/sugestoes/jira",
   "/gestao-contratos",
+  "/base-sd",
 ];
 const updateAllowedRoutes = db.prepare(
   "UPDATE security_levels SET allowed_routes = ? WHERE key = ?"
@@ -725,6 +727,59 @@ db.exec(`
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS base_sd_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hostname TEXT,
+    month_inclusion TEXT,
+    asset_type TEXT,
+    cmdb TEXT,
+    tlv_cmdb TEXT,
+    valid TEXT,
+    ip TEXT,
+    os TEXT,
+    coverage_tools TEXT,
+    obs_cofre TEXT,
+    obs_tenable TEXT,
+    obs_guardicore TEXT,
+    obs_deep_security TEXT,
+    obs_crowdstrike TEXT,
+    obs_wazuh TEXT,
+    obs_trellix TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+`);
+
+const baseSdTableInfo = db
+  .prepare("PRAGMA table_info(base_sd_assets)")
+  .all() as TableInfoRow[];
+
+const baseSdColumns = [
+  { name: "hostname", type: "TEXT" },
+  { name: "month_inclusion", type: "TEXT" },
+  { name: "asset_type", type: "TEXT" },
+  { name: "cmdb", type: "TEXT" },
+  { name: "tlv_cmdb", type: "TEXT" },
+  { name: "valid", type: "TEXT" },
+  { name: "ip", type: "TEXT" },
+  { name: "os", type: "TEXT" },
+  { name: "coverage_tools", type: "TEXT" },
+  { name: "obs_cofre", type: "TEXT" },
+  { name: "obs_tenable", type: "TEXT" },
+  { name: "obs_guardicore", type: "TEXT" },
+  { name: "obs_deep_security", type: "TEXT" },
+  { name: "obs_crowdstrike", type: "TEXT" },
+  { name: "obs_wazuh", type: "TEXT" },
+  { name: "obs_trellix", type: "TEXT" },
+];
+
+baseSdColumns.forEach((column) => {
+  const exists = baseSdTableInfo.some((item) => item.name === column.name);
+  if (!exists) {
+    db.exec(`ALTER TABLE base_sd_assets ADD COLUMN ${column.name} ${column.type}`);
+  }
+});
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_contracts_status_end
