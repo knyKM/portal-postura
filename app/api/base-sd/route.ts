@@ -23,9 +23,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ asset });
     }
     const limitParam = url.searchParams.get("limit");
-    const limit = limitParam ? Number(limitParam) : 200;
-    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 1000) : 200;
-    return NextResponse.json({ assets: listBaseSdAssets(safeLimit) });
+    const pageParam = url.searchParams.get("page");
+    const limit = limitParam ? Number(limitParam) : 20;
+    const page = pageParam ? Number(pageParam) : 1;
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 20;
+    const safePage = Number.isFinite(page) ? Math.max(page, 1) : 1;
+    const offset = (safePage - 1) * safeLimit;
+    return NextResponse.json({ assets: listBaseSdAssets(safeLimit, offset) });
   } catch (error) {
     console.error("[base-sd:GET]", error);
     return NextResponse.json(

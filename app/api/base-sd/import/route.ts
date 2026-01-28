@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
 import { insertBaseSdAssets } from "@/lib/base-sd/base-sd-service";
+import { db } from "@/lib/auth/database";
 
 const REQUIRED_HEADERS = [
   "hostname",
@@ -159,6 +160,8 @@ export async function POST(request: Request) {
       Object.values(record).some((value) => value && String(value).trim().length > 0)
     );
 
+    // Sempre substitui a base atual por uma nova carga
+    db.prepare("DELETE FROM base_sd_assets").run();
     const result = insertBaseSdAssets(filtered);
     return NextResponse.json({
       inserted: result.inserted,

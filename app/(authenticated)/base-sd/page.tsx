@@ -66,13 +66,15 @@ export default function BaseSdPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [assets, setAssets] = useState<BaseSdAsset[]>([]);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   useEffect(() => {
     let active = true;
     async function fetchAssets() {
       setLoadingList(true);
       try {
-        const response = await fetch("/api/base-sd?limit=200");
+        const response = await fetch(`/api/base-sd?limit=${pageSize}&page=${page}`);
         const data = await response.json().catch(() => null);
         if (!response.ok) {
           throw new Error(data?.error || "Não foi possível carregar os ativos.");
@@ -92,7 +94,7 @@ export default function BaseSdPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page]);
 
   const assetCards = useMemo(() => {
     const grouped = new Map<
@@ -160,7 +162,9 @@ export default function BaseSdPage() {
         throw new Error(data?.error || "Não foi possível importar o CSV.");
       }
       const inserted = Array.isArray(data?.assets) ? data.assets : [];
-      setAssets((prev) => [...inserted, ...prev]);
+      if (page === 1) {
+        setAssets((prev) => [...inserted, ...prev].slice(0, pageSize));
+      }
       setSuccess(
         `Importação concluída: ${data?.inserted ?? 0} registros inseridos, ${data?.skipped ?? 0} ignorados.`
       );
@@ -184,6 +188,7 @@ export default function BaseSdPage() {
         throw new Error(data?.error || "Não foi possível limpar a base.");
       }
       setAssets([]);
+      setPage(1);
       setSuccess("Base SD limpa com sucesso.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao limpar base.");
@@ -254,6 +259,32 @@ export default function BaseSdPage() {
           </div>
           {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
           {success && <p className="mt-3 text-xs text-emerald-400">{success}</p>}
+        </section>
+
+        <section className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+            Página {page}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={page === 1 || loadingList}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              Anterior
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={assets.length < pageSize || loadingList}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Próxima
+            </Button>
+          </div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

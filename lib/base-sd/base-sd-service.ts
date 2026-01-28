@@ -41,7 +41,7 @@ export type BaseSdAssetInput = {
   obsTrellix?: string | null;
 };
 
-export function listBaseSdAssets(limit = 200) {
+export function listBaseSdAssets(limit = 200, offset = 0) {
   return db
     .prepare<BaseSdAssetRecord>(
       `SELECT id, hostname, month_inclusion, asset_type, cmdb, tlv_cmdb, valid, ip, os,
@@ -49,9 +49,9 @@ export function listBaseSdAssets(limit = 200) {
               obs_crowdstrike, obs_wazuh, obs_trellix, created_at
        FROM base_sd_assets
        ORDER BY id DESC
-       LIMIT ?`
+       LIMIT ? OFFSET ?`
     )
-    .all(limit);
+    .all(limit, offset);
 }
 
 export function getBaseSdAssetById(id: number) {
