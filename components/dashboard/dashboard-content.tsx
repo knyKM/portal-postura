@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Area,
   AreaChart,
@@ -33,6 +34,8 @@ import {
   Activity,
   PauseCircle,
   Clock4,
+  LineChart,
+  Sparkles,
 } from "lucide-react";
 import { useTheme } from "@/components/theme/theme-provider";
 import { useAutomationMonitor } from "@/hooks/use-automation-monitor";
@@ -64,36 +67,88 @@ const severityDistribution = [
   { severity: "Baixa", count: 19 },
 ];
 
-const widgetTemplates = [
+type WidgetTemplate = {
+  id: string;
+  title: string;
+  description: string;
+  jqlExample: string;
+  icon: React.ComponentType<{ className?: string }>;
+  supportsSingle: boolean;
+  supportsMulti: boolean;
+  defaultMulti?: boolean;
+};
+
+const widgetTemplates: WidgetTemplate[] = [
   {
     id: "counter",
-    title: "Contador de issues",
-    description: "Mostra o total retornado por uma JQL específica.",
+    title: "Contador",
+    description: "Total de resultados para uma JQL.",
     jqlExample: 'project = "SEC" AND status != Done',
     icon: Target,
+    supportsSingle: true,
+    supportsMulti: false,
   },
   {
-    id: "severity",
-    title: "Distribuição por severidade",
-    description: "Agrupa resultados por prioridade, criticidade ou qualquer campo.",
-    jqlExample: 'project = "SEC" ORDER BY priority DESC',
-    icon: BarChart3,
-  },
-  {
-    id: "aging",
-    title: "Backlog por idade",
-    description: "Destaca tickets há mais tempo em aberto.",
-    jqlExample: 'project = "SEC" AND created <= -30d',
+    id: "pie",
+    title: "Pizza",
+    description: "Comparação de totais entre várias JQLs.",
+    jqlExample: 'project = "SEC" AND priority = High',
     icon: PieChart,
+    supportsSingle: false,
+    supportsMulti: true,
+  },
+  {
+    id: "bar",
+    title: "Barra",
+    description: "Comparação de totais entre JQLs.",
+    jqlExample: 'project = "SEC" AND status = \"Em análise\"',
+    icon: BarChart3,
+    supportsSingle: false,
+    supportsMulti: true,
   },
   {
     id: "table",
-    title: "Tabela de vigilância",
-    description: "Lista issues com campos chave para investigação rápida.",
+    title: "Tabela",
+    description: "Mostra o total por cada JQL configurada.",
     jqlExample: 'project = "SEC" AND labels = monitorar',
     icon: Table,
+    supportsSingle: false,
+    supportsMulti: true,
+  },
+  {
+    id: "line",
+    title: "Linha",
+    description: "Tendência baseada em uma ou mais JQLs.",
+    jqlExample: 'project = "SEC" AND created >= -30d',
+    icon: LineChart,
+    supportsSingle: true,
+    supportsMulti: true,
+  },
+  {
+    id: "radial",
+    title: "Radial",
+    description: "Progresso ou cobertura de uma ou mais JQLs.",
+    jqlExample: 'project = "SEC" AND statusCategory != Done',
+    icon: Sparkles,
+    supportsSingle: true,
+    supportsMulti: true,
   },
 ];
+
+type DashboardWidgetConfig = {
+  name: string;
+  templateId: string;
+  design: string;
+  mode: "single" | "multi";
+  jqlEntries: Array<{ name: string; jql: string; color: string }>;
+};
+
+type DashboardWidget = {
+  id: number;
+  name: string;
+  templateId: string;
+  config: DashboardWidgetConfig;
+};
 
 type MetricCardProps = {
   label: string;
@@ -160,6 +215,59 @@ export function DashboardContent() {
   const [selectedTemplate, setSelectedTemplate] = useState(widgetTemplates[0].id);
   const [creationMessage, setCreationMessage] = useState<string | null>(null);
   const selected = widgetTemplates.find((template) => template.id === selectedTemplate);
+  const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+  const [widgetsLoading, setWidgetsLoading] = useState(false);
+  const [widgetsError, setWidgetsError] = useState<string | null>(null);
+  const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
+  const [widgetName, setWidgetName] = useState("");
+  const [widgetDesign, setWidgetDesign] = useState("standard");
+  const [widgetMode, setWidgetMode] = useState<"single" | "multi">("single");
+  const [jqlEntries, setJqlEntries] = useState<
+    Array<{ name: string; jql: string; color: string }>
+  >([{ name: "", jql: "", color: "#8b5cf6" }]);
+  const [widgetSaveError, setWidgetSaveError] = useState<string | null>(null);
+  const [widgetSaving, setWidgetSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function fetchWidgets() {
+      setWidgetsLoading(true);
+      setWidgetsError(null);
+      try {
+        const response = await fetch("/api/dashboard-widgets");
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || "Não foi possível carregar widgets.");
+        }
+        if (active) {
+          const list = Array.isArray(data?.widgets) ? data.widgets : [];
+          const normalized = list.map((item: DashboardWidget) => ({
+            ...item,
+            config: item.config as DashboardWidgetConfig,
+          }));
+          setWidgets(normalized);
+        }
+      } catch (error) {
+        if (active) {
+          setWidgetsError(
+            error instanceof Error ? error.message : "Falha ao carregar widgets."
+          );
+        }
+      } finally {
+        if (active) setWidgetsLoading(false);
+      }
+    }
+    fetchWidgets();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (widgetMode === "single" && jqlEntries.length > 1) {
+      setJqlEntries((prev) => prev.slice(0, 1));
+    }
+  }, [jqlEntries.length, widgetMode]);
 
   function getJobStatus(jobStatus: AutomationJobStatus) {
     switch (jobStatus) {
@@ -190,11 +298,87 @@ export function DashboardContent() {
     }
   }
 
-  function handleCreateWidget() {
+  function handleCreateWidget(templateId?: string) {
+    const template = widgetTemplates.find((item) => item.id === (templateId ?? selectedTemplate));
+    if (!template) return;
+    setWidgetName(template.title);
+    setWidgetDesign("standard");
+    if (template.supportsMulti && !template.supportsSingle) {
+      setWidgetMode("multi");
+    } else if (template.supportsSingle && !template.supportsMulti) {
+      setWidgetMode("single");
+    } else {
+      setWidgetMode(template.defaultMulti ? "multi" : "single");
+    }
+    setJqlEntries([{ name: "", jql: "", color: "#8b5cf6" }]);
+    setWidgetSaveError(null);
+    setIsWidgetModalOpen(true);
+    setCreationMessage(null);
+  }
+
+  const modalTarget = typeof document !== "undefined" ? document.body : null;
+
+  const widgetList = useMemo(() => {
+    return widgets.map((widget) => ({
+      ...widget,
+      template: widgetTemplates.find((item) => item.id === widget.templateId),
+    }));
+  }, [widgets]);
+
+  async function handleSaveWidget() {
     if (!selected) return;
-    setCreationMessage(
-      `Widget "${selected.title}" pronto para conectar à sua JQL. Cole a consulta e salve para ver os dados do Jira.`
+    const trimmedName = widgetName.trim();
+    if (!trimmedName) {
+      setWidgetSaveError("Informe o nome do widget.");
+      return;
+    }
+    const entries = jqlEntries.filter(
+      (entry) => entry.jql.trim().length > 0 && entry.name.trim().length > 0
     );
+    if (entries.length === 0) {
+      setWidgetSaveError("Informe ao menos uma JQL com nome.");
+      return;
+    }
+    if (widgetMode === "single" && entries.length > 1) {
+      setWidgetSaveError("Este widget aceita apenas uma JQL.");
+      return;
+    }
+    setWidgetSaving(true);
+    setWidgetSaveError(null);
+    try {
+      const payload: DashboardWidgetConfig = {
+        name: trimmedName,
+        templateId: selected.id,
+        design: widgetDesign,
+        mode: widgetMode,
+        jqlEntries: entries,
+      };
+      const response = await fetch("/api/dashboard-widgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: trimmedName,
+          templateId: selected.id,
+          config: payload,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível salvar widget.");
+      }
+      const widget = data?.widget as DashboardWidget | undefined;
+      if (widget) {
+        setWidgets((prev) => [widget, ...prev]);
+      }
+      setIsWidgetModalOpen(false);
+      setCreationMessage(`Widget "${trimmedName}" criado e salvo.`);
+    } catch (error) {
+      setWidgetSaveError(
+        error instanceof Error ? error.message : "Falha ao salvar widget."
+      );
+    } finally {
+      setWidgetSaving(false);
+    }
   }
 
   const cardClass = cn(
@@ -241,7 +425,7 @@ export function DashboardContent() {
           </div>
           <Button
             type="button"
-            onClick={handleCreateWidget}
+            onClick={() => handleCreateWidget()}
             className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-sm font-semibold text-white"
           >
             Criar widget JQL
@@ -300,11 +484,263 @@ export function DashboardContent() {
                 <p className="text-[11px] font-mono text-purple-300">
                   Exemplo: {template.jqlExample}
                 </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="mt-auto w-full rounded-2xl"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedTemplate(template.id);
+                    handleCreateWidget(template.id);
+                  }}
+                >
+                  Adicionar
+                </Button>
               </button>
             );
           })}
         </CardContent>
       </Card>
+
+      <Card className={cardClass}>
+        <CardHeader className="flex flex-col gap-2">
+          <CardTitle className="text-base font-semibold">Widgets configurados</CardTitle>
+          <p className="text-xs text-zinc-500">
+            Aqui ficam os widgets JQL que serão consultados pelo job horário.
+          </p>
+          {widgetsError && <p className="text-xs text-rose-400">{widgetsError}</p>}
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          {widgetsLoading ? (
+            <div className="text-xs text-zinc-500">Carregando widgets...</div>
+          ) : widgetList.length === 0 ? (
+            <div className="text-xs text-zinc-500">Nenhum widget configurado.</div>
+          ) : (
+            widgetList.map((widget) => (
+              <div
+                key={widget.id}
+                className={cn(
+                  "rounded-2xl border px-4 py-3 text-xs",
+                  isDark
+                    ? "border-white/10 bg-[#050816] text-zinc-300"
+                    : "border-slate-200 bg-white text-slate-600"
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-sm">{widget.name}</p>
+                  <span className="text-[11px] text-zinc-500">
+                    {widget.template?.title ?? widget.templateId}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  {widget.config?.jqlEntries?.length ?? 0} JQL(s)
+                </p>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {modalTarget && isWidgetModalOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div
+                className={cn(
+                  "w-full max-w-3xl rounded-3xl border p-6",
+                  isDark ? "border-white/10 bg-[#050816]" : "border-slate-200 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-purple-400">
+                      Configurar widget
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold">
+                      {selected?.title ?? "Widget"}
+                    </h3>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Defina nome, estilo e JQLs para alimentar este widget.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setIsWidgetModalOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+                  <input
+                    value={widgetName}
+                    onChange={(event) => setWidgetName(event.target.value)}
+                    placeholder="Nome do widget"
+                    className={cn(
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  />
+                  <select
+                    value={widgetDesign}
+                    onChange={(event) => setWidgetDesign(event.target.value)}
+                    className={cn(
+                      "h-10 rounded-xl border px-3 text-sm",
+                      isDark
+                        ? "border-white/10 bg-black/40 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="compact">Compacto</option>
+                    <option value="highlight">Destaque</option>
+                  </select>
+                  {selected?.supportsMulti && selected?.supportsSingle && (
+                    <select
+                      value={widgetMode}
+                      onChange={(event) =>
+                        setWidgetMode(event.target.value as "single" | "multi")
+                      }
+                      className={cn(
+                        "h-10 rounded-xl border px-3 text-sm md:col-span-2",
+                        isDark
+                          ? "border-white/10 bg-black/40 text-white"
+                          : "border-slate-200 bg-white text-slate-700"
+                      )}
+                    >
+                      <option value="single">Uma JQL</option>
+                      <option value="multi">Múltiplas JQLs</option>
+                    </select>
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {jqlEntries.map((entry, index) => (
+                    <div
+                      key={`${index}-${entry.color}`}
+                      className={cn(
+                        "rounded-2xl border px-4 py-3",
+                        isDark
+                          ? "border-white/10 bg-black/30 text-zinc-200"
+                          : "border-slate-200 bg-white text-slate-700"
+                      )}
+                    >
+                      <div className="grid gap-3 md:grid-cols-[1fr,2fr,120px]">
+                        <input
+                          value={entry.name}
+                          onChange={(event) =>
+                            setJqlEntries((prev) =>
+                              prev.map((item, idx) =>
+                                idx === index
+                                  ? { ...item, name: event.target.value }
+                                  : item
+                              )
+                            )
+                          }
+                          placeholder="Nome do dado"
+                          className={cn(
+                            "h-10 rounded-xl border px-3 text-sm",
+                            isDark
+                              ? "border-white/10 bg-black/40 text-white"
+                              : "border-slate-200 bg-white text-slate-700"
+                          )}
+                        />
+                        <input
+                          value={entry.jql}
+                          onChange={(event) =>
+                            setJqlEntries((prev) =>
+                              prev.map((item, idx) =>
+                                idx === index
+                                  ? { ...item, jql: event.target.value }
+                                  : item
+                              )
+                            )
+                          }
+                          placeholder="JQL"
+                          className={cn(
+                            "h-10 rounded-xl border px-3 text-sm",
+                            isDark
+                              ? "border-white/10 bg-black/40 text-white"
+                              : "border-slate-200 bg-white text-slate-700"
+                          )}
+                        />
+                        <input
+                          type="color"
+                          value={entry.color}
+                          onChange={(event) =>
+                            setJqlEntries((prev) =>
+                              prev.map((item, idx) =>
+                                idx === index
+                                  ? { ...item, color: event.target.value }
+                                  : item
+                              )
+                            )
+                          }
+                          className="h-10 w-full rounded-xl border border-white/10 bg-transparent"
+                        />
+                      </div>
+                      {widgetMode === "multi" && jqlEntries.length > 1 && (
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() =>
+                              setJqlEntries((prev) => prev.filter((_, idx) => idx !== index))
+                            }
+                          >
+                            Remover
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {widgetMode === "multi" && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        setJqlEntries((prev) => [
+                          ...prev,
+                          { name: "", jql: "", color: "#8b5cf6" },
+                        ])
+                      }
+                    >
+                      Adicionar JQL
+                    </Button>
+                  )}
+                </div>
+
+                {widgetSaveError && (
+                  <p className="mt-3 text-xs text-rose-400">{widgetSaveError}</p>
+                )}
+
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setIsWidgetModalOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                    disabled={widgetSaving}
+                    onClick={handleSaveWidget}
+                  >
+                    {widgetSaving ? "Salvando..." : "Salvar widget"}
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            modalTarget
+          )
+        : null}
 
       {/* AUDITORIA DE JOBS */}
       <Card className={cardClass}>

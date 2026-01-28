@@ -37,6 +37,11 @@ export default function ConfiguracoesPage() {
   const [loadingJiraToken, setLoadingJiraToken] = useState(true);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
+  const [dashboardToken, setDashboardToken] = useState("");
+  const [dashboardTokenLoading, setDashboardTokenLoading] = useState(true);
+  const [dashboardTokenSaving, setDashboardTokenSaving] = useState(false);
+  const [dashboardTokenMessage, setDashboardTokenMessage] = useState<string | null>(null);
+  const [dashboardTokenError, setDashboardTokenError] = useState<string | null>(null);
   const [tenableAccessKey, setTenableAccessKey] = useState("");
   const [tenableSecretKey, setTenableSecretKey] = useState("");
   const [tenableVerifySsl, setTenableVerifySsl] = useState(true);
@@ -108,6 +113,42 @@ export default function ConfiguracoesPage() {
         );
       })
       .finally(() => setLoadingJiraToken(false));
+
+    setDashboardTokenLoading(true);
+    fetch("/api/integrations/dashboard-token")
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (data?.error) {
+          throw new Error(data.error);
+        }
+        setDashboardToken(data?.token ?? "");
+      })
+      .catch((err) => {
+        setDashboardTokenError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar o token do dashboard."
+        );
+      })
+      .finally(() => setDashboardTokenLoading(false));
+
+    setDashboardTokenLoading(true);
+    fetch("/api/integrations/dashboard-token")
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (data?.error) {
+          throw new Error(data.error);
+        }
+        setDashboardToken(data?.token ?? "");
+      })
+      .catch((err) => {
+        setDashboardTokenError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar o token do dashboard."
+        );
+      })
+      .finally(() => setDashboardTokenLoading(false));
 
     setLoadingTenable(true);
     fetch("/api/integrations/tenable-token")
@@ -650,6 +691,97 @@ export default function ConfiguracoesPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Card
+            className={cn(
+              "rounded-3xl border overflow-hidden",
+              isDark
+                ? "border-zinc-800 bg-[#050816]/80"
+                : "border-slate-200 bg-white"
+            )}
+          >
+            <CardHeader className="pb-3 border-b border-zinc-800/40">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-500/90 text-white">
+                  <MonitorSmartphone className="h-4 w-4" />
+                </span>
+                <div className="flex flex-col">
+                  <CardTitle className="text-sm font-semibold">
+                    Token Dashboard (Jira)
+                  </CardTitle>
+                  <span className="text-[11px] text-zinc-500">
+                    Token compartilhado para widgets JQL do dashboard.
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-zinc-400">
+              {dashboardTokenError && (
+                <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+                  {dashboardTokenError}
+                </div>
+              )}
+              {dashboardTokenMessage && (
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+                  {dashboardTokenMessage}
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">
+                  Token do dashboard
+                </label>
+                <Input
+                  type="password"
+                  value={dashboardToken}
+                  disabled={dashboardTokenLoading || user?.role !== "admin"}
+                  onChange={(event) => setDashboardToken(event.target.value)}
+                  placeholder="Cole aqui o token do dashboard"
+                />
+                <p className="text-[11px] text-zinc-500">
+                  Todos os usuários usam o mesmo token configurado por administradores.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  className="rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                  disabled={dashboardTokenSaving || user?.role !== "admin"}
+                  onClick={async () => {
+                    setDashboardTokenSaving(true);
+                    setDashboardTokenError(null);
+                    setDashboardTokenMessage(null);
+                    try {
+                      const response = await fetch("/api/integrations/dashboard-token", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: dashboardToken }),
+                      });
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        throw new Error(data?.error || "Não foi possível salvar.");
+                      }
+                      setDashboardToken(data?.token ?? dashboardToken);
+                      setDashboardTokenMessage("Token salvo com sucesso.");
+                    } catch (err) {
+                      setDashboardTokenError(
+                        err instanceof Error ? err.message : "Falha ao salvar token."
+                      );
+                    } finally {
+                      setDashboardTokenSaving(false);
+                    }
+                  }}
+                >
+                  {dashboardTokenSaving ? "Salvando..." : "Salvar token"}
+                </Button>
+                {user?.role !== "admin" && (
+                  <span className="text-[11px] text-zinc-500">
+                    Somente admin pode alterar.
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
 
         {/* INTEGRAÇÃO TENABLE */}
         <Card

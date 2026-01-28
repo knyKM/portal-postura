@@ -1346,6 +1346,24 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS dashboard_widgets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_user
+  ON dashboard_widgets (user_id, created_at);
+`);
+
 const dashboardTableInfo = db
   .prepare("PRAGMA table_info(dashboard_templates)")
   .all() as TableInfoRow[];
