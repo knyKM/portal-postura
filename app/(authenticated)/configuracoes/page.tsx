@@ -38,10 +38,17 @@ export default function ConfiguracoesPage() {
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
   const [dashboardToken, setDashboardToken] = useState("");
+  const [dashboardJiraUrl, setDashboardJiraUrl] = useState("");
   const [dashboardTokenLoading, setDashboardTokenLoading] = useState(true);
   const [dashboardTokenSaving, setDashboardTokenSaving] = useState(false);
   const [dashboardTokenMessage, setDashboardTokenMessage] = useState<string | null>(null);
   const [dashboardTokenError, setDashboardTokenError] = useState<string | null>(null);
+  const [dashboardSyncLoading, setDashboardSyncLoading] = useState(false);
+  const [dashboardSyncMessage, setDashboardSyncMessage] = useState<string | null>(null);
+  const [dashboardSyncError, setDashboardSyncError] = useState<string | null>(null);
+  const [dashboardJiraSyncLoading, setDashboardJiraSyncLoading] = useState(false);
+  const [dashboardJiraSyncMessage, setDashboardJiraSyncMessage] = useState<string | null>(null);
+  const [dashboardJiraSyncError, setDashboardJiraSyncError] = useState<string | null>(null);
   const [tenableAccessKey, setTenableAccessKey] = useState("");
   const [tenableSecretKey, setTenableSecretKey] = useState("");
   const [tenableVerifySsl, setTenableVerifySsl] = useState(true);
@@ -122,24 +129,7 @@ export default function ConfiguracoesPage() {
           throw new Error(data.error);
         }
         setDashboardToken(data?.token ?? "");
-      })
-      .catch((err) => {
-        setDashboardTokenError(
-          err instanceof Error
-            ? err.message
-            : "Não foi possível carregar o token do dashboard."
-        );
-      })
-      .finally(() => setDashboardTokenLoading(false));
-
-    setDashboardTokenLoading(true);
-    fetch("/api/integrations/dashboard-token")
-      .then((res) => res.json().catch(() => null))
-      .then((data) => {
-        if (data?.error) {
-          throw new Error(data.error);
-        }
-        setDashboardToken(data?.token ?? "");
+        setDashboardJiraUrl(data?.url ?? "");
       })
       .catch((err) => {
         setDashboardTokenError(
@@ -726,6 +716,40 @@ export default function ConfiguracoesPage() {
                   {dashboardTokenMessage}
                 </div>
               )}
+              {dashboardSyncError && (
+                <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+                  {dashboardSyncError}
+                </div>
+              )}
+              {dashboardSyncMessage && (
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+                  {dashboardSyncMessage}
+                </div>
+              )}
+              {dashboardJiraSyncError && (
+                <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+                  {dashboardJiraSyncError}
+                </div>
+              )}
+              {dashboardJiraSyncMessage && (
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+                  {dashboardJiraSyncMessage}
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">
+                  URL do Jira (Dashboard)
+                </label>
+                <Input
+                  value={dashboardJiraUrl}
+                  disabled={dashboardTokenLoading || user?.role !== "admin"}
+                  onChange={(event) => setDashboardJiraUrl(event.target.value)}
+                  placeholder="https://seu-jira.exemplo.com"
+                />
+                <p className="text-[11px] text-zinc-500">
+                  URL base utilizada nas consultas JQL do dashboard.
+                </p>
+              </div>
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-zinc-400">
                   Token do dashboard
@@ -754,13 +778,17 @@ export default function ConfiguracoesPage() {
                       const response = await fetch("/api/integrations/dashboard-token", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ token: dashboardToken }),
+                        body: JSON.stringify({
+                          token: dashboardToken,
+                          url: dashboardJiraUrl,
+                        }),
                       });
                       const data = await response.json().catch(() => null);
                       if (!response.ok) {
                         throw new Error(data?.error || "Não foi possível salvar.");
                       }
                       setDashboardToken(data?.token ?? dashboardToken);
+                      setDashboardJiraUrl(data?.url ?? dashboardJiraUrl);
                       setDashboardTokenMessage("Token salvo com sucesso.");
                     } catch (err) {
                       setDashboardTokenError(
@@ -776,6 +804,102 @@ export default function ConfiguracoesPage() {
                 {user?.role !== "admin" && (
                   <span className="text-[11px] text-zinc-500">
                     Somente admin pode alterar.
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-2xl"
+                  disabled={dashboardSyncLoading || user?.role !== "admin"}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        "Deseja sincronizar o JSON de JQLs com os templates atuais?"
+                      )
+                    ) {
+                      return;
+                    }
+                    setDashboardSyncLoading(true);
+                    setDashboardSyncError(null);
+                    setDashboardSyncMessage(null);
+                    try {
+                      const response = await fetch("/api/dashboards/sync-jqls", {
+                        method: "POST",
+                      });
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        throw new Error(data?.error || "Falha ao sincronizar JQLs.");
+                      }
+                      const result = data?.result;
+                      setDashboardSyncMessage(
+                        `JSON atualizado. ${result?.templates ?? 0} templates, ${
+                          result?.widgets ?? 0
+                        } widgets.`
+                      );
+                    } catch (err) {
+                      setDashboardSyncError(
+                        err instanceof Error ? err.message : "Falha ao sincronizar JQLs."
+                      );
+                    } finally {
+                      setDashboardSyncLoading(false);
+                    }
+                  }}
+                >
+                  {dashboardSyncLoading ? "Sincronizando..." : "Atualizar JSON de JQLs"}
+                </Button>
+                {user?.role !== "admin" && (
+                  <span className="text-[11px] text-zinc-500">
+                    Somente admin pode executar.
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-2xl border-purple-500/40 text-purple-200"
+                  disabled={dashboardJiraSyncLoading || user?.role !== "admin"}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        "Deseja sincronizar os dados do Jira para o dashboard? Isso irá atualizar o dashboard-jql-results.json."
+                      )
+                    ) {
+                      return;
+                    }
+                    setDashboardJiraSyncLoading(true);
+                    setDashboardJiraSyncError(null);
+                    setDashboardJiraSyncMessage(null);
+                    try {
+                      const response = await fetch("/api/dashboards/sync-jira", {
+                        method: "POST",
+                      });
+                      const data = await response.json().catch(() => null);
+                      if (!response.ok) {
+                        throw new Error(data?.error || "Falha ao sincronizar dados do Jira.");
+                      }
+                      const totals = data?.totals;
+                      setDashboardJiraSyncMessage(
+                        `Sync concluído. ${totals?.queries ?? 0} JQLs consultadas.`
+                      );
+                    } catch (err) {
+                      setDashboardJiraSyncError(
+                        err instanceof Error
+                          ? err.message
+                          : "Falha ao sincronizar dados do Jira."
+                      );
+                    } finally {
+                      setDashboardJiraSyncLoading(false);
+                    }
+                  }}
+                >
+                  {dashboardJiraSyncLoading ? "Sincronizando Jira..." : "Sincronizar Jira"}
+                </Button>
+                {user?.role !== "admin" && (
+                  <span className="text-[11px] text-zinc-500">
+                    Somente admin pode executar.
                   </span>
                 )}
               </div>

@@ -6,6 +6,7 @@ import {
   createDashboardTemplate,
   listDashboardTemplates,
 } from "@/lib/dashboards/dashboard-service";
+import { upsertRegistryTemplate } from "@/lib/dashboards/jql-registry";
 
 export async function GET(request: Request) {
   const session = await getSessionUser(request.headers.get("cookie") ?? undefined);
@@ -38,6 +39,11 @@ export async function POST(request: Request) {
     const dashboard = createDashboardTemplate({
       name: body.name,
       config: body.config,
+    });
+    upsertRegistryTemplate({
+      userId: session.id,
+      templateId: String(dashboard.id),
+      name: dashboard.name,
     });
     return NextResponse.json({ dashboard }, { status: 201 });
   } catch (error) {

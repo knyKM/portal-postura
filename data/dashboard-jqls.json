@@ -1,0 +1,138 @@
+{
+  "generatedAt": "2026-01-29T00:35:40",
+  "users": [
+    {
+      "userId": 3,
+      "templates": [
+        {
+          "id": "23",
+          "name": "Teste",
+          "widgets": [
+            {
+              "id": 39,
+              "name": "Contador",
+              "templateId": "counter-single",
+              "entries": [
+                {
+                  "name": "Red Team",
+                  "jql": "HGDSFGHDSFHSYHJASDRRGFARGDFASDFG",
+                  "color": "#a855f7"
+                }
+              ]
+            },
+            {
+              "id": 38,
+              "name": "Barras",
+              "templateId": "bar-multiple",
+              "entries": [
+                {
+                  "name": "Barras1",
+                  "jql": "ghdrtsfgstasdfdfg",
+                  "color": "#a855f7"
+                },
+                {
+                  "name": "Barras2",
+                  "jql": "asdfdfghbfghrthergt",
+                  "color": "#6366f1"
+                },
+                {
+                  "name": "Barras3",
+                  "jql": "drythasdfsdgfeh6t",
+                  "color": "#ec4899"
+                }
+              ]
+            },
+            {
+              "id": 37,
+              "name": "Radar",
+              "templateId": "radar-legend",
+              "entries": [
+                {
+                  "name": "Radar1",
+                  "jql": "asdcafdsvsfgdbdsrftgh",
+                  "color": "#a855f7"
+                },
+                {
+                  "name": "Radar2",
+                  "jql": "sdfgsZDDfgsdfghdfgh",
+                  "color": "#6366f1"
+                },
+                {
+                  "name": "Radar3",
+                  "jql": "dfghdfghjxdfgsfgj",
+                  "color": "#ec4899"
+                }
+              ]
+            },
+            {
+              "id": 36,
+              "name": "Rosquinha",
+              "templateId": "donut",
+              "entries": [
+                {
+                  "name": "Rosquinha1",
+                  "jql": "fdghdszftzsdtgsdthsdfgh",
+                  "color": "#a855f7"
+                },
+                {
+                  "name": "Rosquinha2",
+                  "jql": "zSDfdfsxgbsfdgbdzafsgsdfg",
+                  "color": "#6366f1"
+                },
+                {
+                  "name": "Rosquinha3",
+                  "jql": "zxdfgSEEDGdfgsdfgh",
+                  "color": "#ec4899"
+                }
+              ]
+            },
+            {
+              "id": 35,
+              "name": "Pizza",
+              "templateId": "pie",
+              "entries": [
+                {
+                  "name": "Pizza1",
+                  "jql": "dfghdfxgxfgjnasEmnhfdgn",
+                  "color": "#a855f7"
+                },
+                {
+                  "name": "Pizza2",
+                  "jql": "sdfgsdfghsdrfgsaear",
+                  "color": "#6366f1"
+                },
+                {
+                  "name": "Pizza3",
+                  "jql": "sdfASDFGBBSDFHSDTHASETF",
+                  "color": "#ec4899"
+                }
+              ]
+            },
+            {
+              "id": 34,
+              "name": "AreaInterativa",
+              "templateId": "area-interactive",
+              "entries": [
+                {
+                  "name": "Area1",
+                  "jql": "dfszgasddsghfdgfsh1",
+                  "color": "#a855f7"
+                },
+                {
+                  "name": "Area2",
+                  "jql": "dfgdfshgdfghxfcgh",
+                  "color": "#6366f1"
+                },
+                {
+                  "name": "Area3",
+                  "jql": "sdfasdghgfhsfgh",
+                  "color": "#ec4899"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

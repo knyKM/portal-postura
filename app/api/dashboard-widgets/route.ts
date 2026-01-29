@@ -4,7 +4,9 @@ import {
   createDashboardWidget,
   listDashboardWidgetsByUser,
 } from "@/lib/dashboards/dashboard-widget-service";
-import { writeDashboardJqlRegistry } from "@/lib/dashboards/jql-registry";
+import {
+  upsertRegistryWidget,
+} from "@/lib/dashboards/jql-registry";
 
 type CreatePayload = {
   name?: string;
@@ -51,7 +53,20 @@ export async function POST(request: Request) {
       templateId: payload.templateId,
       config: payload.config ?? {},
     });
-    writeDashboardJqlRegistry();
+    const config = (payload.config ?? {}) as {
+      dashboardId?: string;
+      jqlEntries?: Array<{ name: string; jql: string; color?: string }>;
+    };
+    const dashboardId = String(config.dashboardId ?? "default");
+    const entries = Array.isArray(config.jqlEntries) ? config.jqlEntries : [];
+    upsertRegistryWidget({
+      userId: session.id,
+      templateId: dashboardId,
+      widgetId: widget.id,
+      widgetName: payload.name,
+      templateType: payload.templateId,
+      entries,
+    });
     return NextResponse.json({ widget }, { status: 201 });
   } catch (error) {
     console.error("[dashboard-widgets:POST]", error);
